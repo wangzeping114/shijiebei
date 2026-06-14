@@ -1,4 +1,7 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// TIMESTAMP WITHOUT TIME ZONE 列存储的是 UTC 值，加 'Z' 让 Node.js 正确识别为 UTC
+types.setTypeParser(1114, str => (str ? new Date(str + 'Z') : null));
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
