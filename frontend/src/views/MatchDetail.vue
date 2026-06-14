@@ -23,6 +23,7 @@
         </div>
         <div class="vs-block">
           <div class="vs-text">VS</div>
+          <div v-if="match.round" class="round-label">{{ match.round }}</div>
           <div class="match-time">{{ formatTime(match.match_time) }}</div>
           <el-tag :type="statusTagType(match.status)" size="large">{{ statusLabel(match.status) }}</el-tag>
         </div>
@@ -237,6 +238,7 @@ onMounted(async () => {
 .team-label { font-size: 13px; opacity: 0.7; margin-top: 4px; }
 .vs-block { text-align: center; }
 .vs-text { font-size: 28px; font-weight: 900; color: #ffd700; }
+.round-label { font-size: 12px; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.15); padding: 2px 10px; border-radius: 10px; margin: 4px 0; }
 .match-time { font-size: 13px; opacity: 0.8; margin: 6px 0; }
 
 .bet-section {

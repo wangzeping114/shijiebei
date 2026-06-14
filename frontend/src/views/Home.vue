@@ -39,6 +39,7 @@
               class="match-card"
               @click="goToMatch(match)"
             >
+              <div v-if="match.round" class="match-round-tag">{{ match.round }}</div>
               <div class="match-teams">
                 <span class="team home">{{ match.home_team }}</span>
                 <span class="vs">VS</span>
@@ -71,7 +72,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { matchAPI } from '../api'
@@ -81,22 +82,43 @@ const router = useRouter()
 const userStore = useUserStore()
 const matches = ref([])
 const loading = ref(false)
+let refreshTimer = null
+
+function beijingDateKey(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(date))
+}
+
+const todayKey = computed(() => beijingDateKey(new Date()))
+
+const todayMatches = computed(() =>
+  matches.value.filter(m => m.is_today || beijingDateKey(m.match_time) === todayKey.value)
+)
 
 const groupedMatches = computed(() => [
   {
+    label: '今日赛程（北京时间）',
+    tagType: 'success',
+    items: todayMatches.value
+  },
+  {
     label: '进行中',
     tagType: 'warning',
-    items: matches.value.filter(m => m.status === 'ongoing')
+    items: matches.value.filter(m => m.status === 'ongoing' && !todayMatches.value.some(t => t.id === m.id))
   },
   {
     label: '即将开赛',
     tagType: 'primary',
-    items: matches.value.filter(m => m.status === 'upcoming')
+    items: matches.value.filter(m => m.status === 'upcoming' && !todayMatches.value.some(t => t.id === m.id))
   },
   {
     label: '已结束',
     tagType: 'info',
-    items: matches.value.filter(m => m.status === 'finished')
+    items: matches.value.filter(m => m.status === 'finished' || m.status === 'closed')
   }
 ])
 
@@ -130,15 +152,26 @@ function handleLogout() {
   router.push('/login')
 }
 
-onMounted(async () => {
-  loading.value = true
+async function loadMatches(silent = false) {
+  if (!silent) loading.value = true
   try {
     matches.value = await matchAPI.getAll()
   } catch {
-    ElMessage.error('获取赛事失败')
+    if (!silent) ElMessage.error('获取赛事失败')
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
+}
+
+onMounted(async () => {
+  await loadMatches()
+  refreshTimer = setInterval(() => {
+    loadMatches(true)
+  }, 60000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 
@@ -248,6 +281,16 @@ onMounted(async () => {
   font-size: 12px;
   color: #2d7d2d;
   font-weight: 600;
+}
+.match-round-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2d7d2d;
+  background: #e8f5e8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
 }
 .loading-wrap { padding: 40px; background: #fff; border-radius: 12px; }
 </style>
