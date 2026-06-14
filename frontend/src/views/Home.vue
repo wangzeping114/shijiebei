@@ -48,6 +48,7 @@
               <div class="match-info">
                 <span class="match-time">
                   🕐 {{ formatTime(match.match_time) }}
+                  <span v-if="match.venue" class="venue-inline">· 📍{{ match.venue }}</span>
                 </span>
                 <el-tag
                   :type="statusTagType(match.status)"
@@ -292,5 +293,7 @@ onUnmounted(() => {
   border-radius: 4px;
   margin-bottom: 8px;
 }
+.match-time { font-size: 12px; color: #888; }
+.venue-inline { color: #aaa; font-size: 11px; }
 .loading-wrap { padding: 40px; background: #fff; border-radius: 12px; }
 </style>
