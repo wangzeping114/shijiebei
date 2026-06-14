@@ -1,0 +1,204 @@
+<template>
+  <div class="page">
+    <div class="page-header">
+      <h2>🏟️ 赛事管理</h2>
+      <el-button type="primary" @click="openCreateDialog">+ 新增赛事</el-button>
+    </div>
+
+    <div class="table-wrap">
+      <el-table :data="matches" v-loading="loading" border stripe>
+        <el-table-column prop="id" label="ID" width="60" />
+        <el-table-column label="赛事" min-width="200">
+          <template #default="{ row }">
+            <strong>{{ row.home_team }}</strong> <span class="vs">vs</span> <strong>{{ row.away_team }}</strong>
+          </template>
+        </el-table-column>
+        <el-table-column label="开赛时间" width="180">
+          <template #default="{ row }">{{ formatTime(row.match_time) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="110">
+          <template #default="{ row }">
+            <el-tag :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="最终比分" width="110">
+          <template #default="{ row }">
+            <span v-if="row.status === 'finished'" class="score-result">
+              {{ row.home_score }} : {{ row.away_score }}
+            </span>
+            <span v-else class="pending-score">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="260">
+          <template #default="{ row }">
+            <el-button size="small" @click="openEditDialog(row)">编辑</el-button>
+            <el-button size="small" type="warning" @click="goOddsConfig(row.id)">赔率配置</el-button>
+            <el-button
+              size="small"
+              type="danger"
+              @click="handleDelete(row.id)"
+            >删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <!-- 新增/编辑 对话框 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEditing ? '编辑赛事' : '新增赛事'"
+      width="460px"
+    >
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
+        <el-form-item label="主队" prop="home_team">
+          <el-input v-model="form.home_team" placeholder="如：法国" />
+        </el-form-item>
+        <el-form-item label="客队" prop="away_team">
+          <el-input v-model="form.away_team" placeholder="如：阿根廷" />
+        </el-form-item>
+        <el-form-item label="开赛时间" prop="match_time">
+          <el-date-picker
+            v-model="form.match_time"
+            type="datetime"
+            placeholder="选择日期时间"
+            format="YYYY-MM-DD HH:mm"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width:100%"
+          />
+        </el-form-item>
+        <el-form-item v-if="isEditing" label="状态">
+          <el-select v-model="form.status" style="width:100%">
+            <el-option label="即将开赛" value="upcoming" />
+            <el-option label="进行中" value="ongoing" />
+            <el-option label="已结束" value="finished" />
+            <el-option label="已关闭" value="closed" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { adminAPI } from '../../api'
+
+const router = useRouter()
+const matches = ref([])
+const loading = ref(false)
+const saving = ref(false)
+const dialogVisible = ref(false)
+const isEditing = ref(false)
+const formRef = ref()
+const editId = ref(null)
+
+const form = ref({ home_team: '', away_team: '', match_time: '', status: 'upcoming' })
+
+const rules = {
+  home_team: [{ required: true, message: '请输入主队名称', trigger: 'blur' }],
+  away_team: [{ required: true, message: '请输入客队名称', trigger: 'blur' }],
+  match_time: [{ required: true, message: '请选择开赛时间', trigger: 'change' }]
+}
+
+function statusLabel(s) {
+  return { upcoming: '即将开赛', ongoing: '进行中', finished: '已结束', closed: '已关闭' }[s] || s
+}
+function statusTagType(s) {
+  return { upcoming: 'primary', ongoing: 'warning', finished: 'info', closed: 'danger' }[s] || ''
+}
+function formatTime(t) {
+  return new Date(t).toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  })
+}
+
+function openCreateDialog() {
+  isEditing.value = false
+  form.value = { home_team: '', away_team: '', match_time: '', status: 'upcoming' }
+  dialogVisible.value = true
+}
+
+function openEditDialog(row) {
+  isEditing.value = true
+  editId.value = row.id
+  form.value = {
+    home_team: row.home_team,
+    away_team: row.away_team,
+    match_time: row.match_time,
+    status: row.status
+  }
+  dialogVisible.value = true
+}
+
+function goOddsConfig(id) {
+  router.push(`/admin/odds/${id}`)
+}
+
+async function handleSave() {
+  await formRef.value.validate()
+  saving.value = true
+  try {
+    if (isEditing.value) {
+      await adminAPI.updateMatch(editId.value, form.value)
+      ElMessage.success('赛事更新成功')
+    } else {
+      await adminAPI.createMatch(form.value)
+      ElMessage.success('赛事创建成功')
+    }
+    dialogVisible.value = false
+    await loadMatches()
+  } catch (err) {
+    ElMessage.error(err.error || '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function handleDelete(id) {
+  await ElMessageBox.confirm('确定要删除该赛事吗？关联的赔率和投注数据也将一并删除！', '警告', {
+    type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消'
+  })
+  try {
+    await adminAPI.deleteMatch(id)
+    ElMessage.success('删除成功')
+    await loadMatches()
+  } catch (err) {
+    ElMessage.error(err.error || '删除失败')
+  }
+}
+
+async function loadMatches() {
+  loading.value = true
+  try {
+    matches.value = await adminAPI.getMatches()
+  } catch {
+    ElMessage.error('获取赛事失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadMatches)
+</script>
+
+<style scoped>
+.page { padding: 32px; }
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.page-header h2 { font-size: 22px; color: #1a4a1a; }
+.table-wrap { background: #fff; border-radius: 12px; padding: 16px; }
+.vs { color: #e6a020; margin: 0 6px; font-weight: 600; }
+.score-result { font-size: 16px; font-weight: 700; color: #c00; }
+.pending-score { color: #ccc; }
+</style>

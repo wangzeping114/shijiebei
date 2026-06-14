@@ -1,0 +1,253 @@
+<template>
+  <div class="layout">
+    <!-- 顶部导航 -->
+    <header class="header">
+      <div class="header-left">
+        <span class="logo">⚽ 2026 世界杯模拟竞猜</span>
+      </div>
+      <div class="header-right">
+        <el-tag type="success" size="small" class="user-tag">
+          {{ userStore.user?.nickname }}
+        </el-tag>
+        <el-button text @click="router.push('/my-bets')">我的投注</el-button>
+        <el-button text type="danger" @click="handleLogout">退出</el-button>
+      </div>
+    </header>
+
+    <!-- 主内容 -->
+    <main class="main">
+      <div class="page-title">
+        <h2>赛事列表</h2>
+        <el-tag>当前共 {{ matches.length }} 场赛事</el-tag>
+      </div>
+
+      <div v-if="loading" class="loading-wrap">
+        <el-skeleton :rows="4" animated />
+      </div>
+
+      <div v-else>
+        <!-- 分组展示 -->
+        <div v-for="group in groupedMatches" :key="group.label" class="match-group">
+          <div class="group-title">
+            <el-tag :type="group.tagType" size="large">{{ group.label }}</el-tag>
+          </div>
+          <div v-if="group.items.length === 0" class="empty-group">暂无赛事</div>
+          <div class="match-grid">
+            <div
+              v-for="match in group.items"
+              :key="match.id"
+              class="match-card"
+              @click="goToMatch(match)"
+            >
+              <div class="match-teams">
+                <span class="team home">{{ match.home_team }}</span>
+                <span class="vs">VS</span>
+                <span class="team away">{{ match.away_team }}</span>
+              </div>
+              <div class="match-info">
+                <span class="match-time">
+                  🕐 {{ formatTime(match.match_time) }}
+                </span>
+                <el-tag
+                  :type="statusTagType(match.status)"
+                  size="small"
+                  class="status-tag"
+                >
+                  {{ statusLabel(match.status) }}
+                </el-tag>
+              </div>
+              <div v-if="match.status === 'finished'" class="result-score">
+                最终比分：{{ match.home_score }} : {{ match.away_score }}
+              </div>
+              <div v-if="match.status === 'upcoming'" class="bet-hint">
+                点击进入投注 →
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { matchAPI } from '../api'
+import { useUserStore } from '../stores/user'
+
+const router = useRouter()
+const userStore = useUserStore()
+const matches = ref([])
+const loading = ref(false)
+
+const groupedMatches = computed(() => [
+  {
+    label: '进行中',
+    tagType: 'warning',
+    items: matches.value.filter(m => m.status === 'ongoing')
+  },
+  {
+    label: '即将开赛',
+    tagType: 'primary',
+    items: matches.value.filter(m => m.status === 'upcoming')
+  },
+  {
+    label: '已结束',
+    tagType: 'info',
+    items: matches.value.filter(m => m.status === 'finished')
+  }
+])
+
+function statusLabel(status) {
+  const map = { upcoming: '即将开赛', ongoing: '进行中', finished: '已结束', closed: '已关闭' }
+  return map[status] || status
+}
+
+function statusTagType(status) {
+  const map = { upcoming: 'primary', ongoing: 'warning', finished: 'info', closed: 'danger' }
+  return map[status] || ''
+}
+
+function formatTime(t) {
+  return new Date(t).toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  })
+}
+
+function goToMatch(match) {
+  if (match.status === 'finished' || match.status === 'closed') {
+    ElMessage.info('该赛事已结束，无法投注')
+    return
+  }
+  router.push(`/match/${match.id}`)
+}
+
+function handleLogout() {
+  userStore.logout()
+  router.push('/login')
+}
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    matches.value = await matchAPI.getAll()
+  } catch {
+    ElMessage.error('获取赛事失败')
+  } finally {
+    loading.value = false
+  }
+})
+</script>
+
+<style scoped>
+.layout {
+  min-height: 100vh;
+  background: #f0f2f5;
+}
+.header {
+  background: linear-gradient(90deg, #1a4a1a, #2d7d2d);
+  padding: 0 32px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.logo {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.user-tag { margin-right: 8px; }
+.header-right .el-button { color: #fff; }
+.header-right .el-button:hover { color: #ffe; }
+
+.main {
+  max-width: 1100px;
+  margin: 32px auto;
+  padding: 0 16px;
+}
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.page-title h2 { font-size: 22px; color: #1a4a1a; }
+
+.match-group { margin-bottom: 32px; }
+.group-title { margin-bottom: 12px; }
+.empty-group { color: #aaa; padding: 16px 0; text-align: center; }
+
+.match-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.match-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 2px solid transparent;
+}
+.match-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(45,125,45,0.2);
+  border-color: #2d7d2d;
+}
+.match-teams {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.team {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a4a1a;
+  flex: 1;
+}
+.team.home { text-align: left; }
+.team.away { text-align: right; }
+.vs {
+  font-size: 14px;
+  font-weight: 900;
+  color: #e6a020;
+  margin: 0 12px;
+  background: #fff8e8;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+.match-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #888;
+}
+.result-score {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #c00;
+  background: #fff5f5;
+  border-radius: 8px;
+  padding: 6px;
+}
+.bet-hint {
+  margin-top: 10px;
+  text-align: right;
+  font-size: 12px;
+  color: #2d7d2d;
+  font-weight: 600;
+}
+.loading-wrap { padding: 40px; background: #fff; border-radius: 12px; }
+</style>

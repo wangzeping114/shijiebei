@@ -1,0 +1,24 @@
+services:
+  backend:
+    image: ghcr.io/wangzeping114/shijiebei-backend:latest
+    container_name: shijiebei-backend
+    restart: always
+    env_file:
+      - .env.backend
+    networks:
+      - shijiebei-net
+
+  frontend:
+    image: ghcr.io/wangzeping114/shijiebei-frontend:latest
+    container_name: shijiebei-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - shijiebei-net
+
+networks:
+  shijiebei-net:
+    driver: bridge
