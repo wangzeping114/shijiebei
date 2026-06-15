@@ -27,7 +27,7 @@
       <el-empty v-if="reportItems.length === 0 && !loading" description="暂无可上报投注数据" />
 
       <template v-else>
-        <div class="summary">文案汇总：共 {{ reportItems.length }} 场，合计 ¥{{ reportGrandTotal.toFixed(2) }}</div>
+        <div class="summary">文案汇总：共 {{ reportItems.length }} 场，合计 ¥{{ formatAmount(reportGrandTotal) }}</div>
         <div class="summary sub">核对列表：{{ detailRows.length }} 条明细（受搜索条件影响）</div>
 
         <el-table :data="pagedDetailRows" border stripe size="small" class="detail-table" empty-text="暂无明细">
@@ -186,12 +186,14 @@ const pagedDetailRows = computed(() => {
   return detailRows.value.slice(start, start + pageSize.value)
 })
 
-function formatOdds(v) {
-  return Number(v).toFixed(2)
+function formatAmount(v) {
+  const n = parseFloat(Number(v).toFixed(2))
+  return String(n)
 }
 
-function formatAmount(v) {
-  return Number(v).toFixed(2)
+function formatOdds(v) {
+  const n = parseFloat(Number(v).toFixed(2))
+  return String(n)
 }
 
 function formatDateTime(t) {
