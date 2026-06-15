@@ -11,46 +11,100 @@
 
 ---
 
-## 快速启动
+## 生产部署（GitHub Actions 自动 CI/CD）
 
-### Docker Compose 一键启动（推荐）
+> 推送到 `main` 或 `deploy` 分支后，流水线自动构建镜像并部署到服务器。
 
-1. 在项目根目录复制环境变量模板：
+### 第一步：生成 SSH 密钥对（只做一次）
 
-    Windows:
-    copy .env.backend.example .env.backend
+在本地 PowerShell 执行：
 
-    Linux:
-    cp .env.backend.example .env.backend
+```powershell
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f "$env:USERPROFILE\.ssh\deploy_key" -N '""'
+```
 
-2. 编辑 .env.backend，至少修改 DB_PASSWORD、POSTGRES_PASSWORD 和 JWT_SECRET
-    并保持以下两组变量一致：
-    DB_NAME = POSTGRES_DB
-    DB_USER = POSTGRES_USER
-    DB_PASSWORD = POSTGRES_PASSWORD
+复制私钥内容备用：
 
-3. 直接拉起前端+后端+PostgreSQL：
+```powershell
+Get-Content "$env:USERPROFILE\.ssh\deploy_key" | Set-Clipboard
+```
 
-    docker compose -f docker-compose.prod.yml up -d
+### 第二步：将公钥放到服务器（只做一次）
 
-4. 查看服务状态：
+SSH 登录服务器后执行（把公钥内容替换进去）：
 
-    docker compose -f docker-compose.prod.yml ps
+```bash
+mkdir -p ~/.ssh
+echo "ssh-ed25519 AAAA...（你的公钥内容）" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+```
 
-说明：数据库由 Docker 自动拉取 postgres:16-alpine 镜像并持久化到卷 shijiebei-pgdata。
+### 第三步：在服务器创建 .env.backend（只做一次）
+
+SSH 登录服务器后执行：
+
+```bash
+mkdir -p ~/shijiebei
+
+cat > ~/shijiebei/.env.backend << 'EOF'
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=asdf@1234
+POSTGRES_DB=worldcup_betting
+DB_HOST=db
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=asdf@1234
+DB_NAME=worldcup_betting
+PORT=3000
+JWT_SECRET=（填你自己的长随机字符串，可用 python3 -c "import secrets; print(secrets.token_hex(48))" 生成）
+EOF
+
+chmod 600 ~/shijiebei/.env.backend
+```
+
+> **注意：**`DB_PASSWORD` 和 `POSTGRES_PASSWORD` 必须完全一致。
+
+### 第四步：在 GitHub 仓库配置 Secrets
+
+进入仓库 → **Settings → Secrets and variables → Actions → New repository secret**，添加以下 5 个：
+
+| Secret 名称 | 填写内容 |
+|---|---|
+| `DEPLOY_HOST` | 服务器 IP 地址 |
+| `DEPLOY_USER` | SSH 登录用户名（通常 `root`） |
+| `DEPLOY_SSH_KEY` | 第一步生成的**私钥全文**（含 `-----BEGIN...` 首尾行） |
+| `GHCR_USERNAME` | 你的 GitHub 用户名（小写） |
+| `GHCR_TOKEN` | GitHub PAT，权限勾选 `read:packages`，在 [github.com/settings/tokens](https://github.com/settings/tokens) 生成 |
+
+> 可选：添加 `DEPLOY_ENV_BACKEND`（值为 `.env.backend` 文件全文内容），配置后每次部署会自动同步到服务器，无需手动登服务器修改。
+
+### 第五步：推送代码触发部署
+
+```bash
+git add .
+git commit -m "deploy"
+git push origin main
+```
+
+流水线会自动：
+1. 构建前端和后端 Docker 镜像并推送到 GHCR
+2. 将 `docker-compose.prod.yml` 和 `deploy.sh` 上传到服务器
+3. SSH 登录服务器执行 `deploy.sh` 完成启动
+
+### 查询数据库（服务器本机）
+
+数据库服务仅对本机开放，端口 `55432`：
+
+```bash
+psql -h 127.0.0.1 -p 55432 -U postgres -d worldcup_betting
+```
 
 ---
 
-### 一、准备数据库
+## 本地开发启动
 
-1. 安装 PostgreSQL（推荐 14+）
-2. 创建数据库：
-
-```sql
-CREATE DATABASE worldcup_betting;
-```
-
-### 二、启动后端
+### 一、启动后端
 
 ```bash
 cd backend
@@ -58,35 +112,25 @@ cd backend
 # 安装依赖
 npm install
 
-# 复制环境变量文件
-copy .env.example .env
+# 复制并编辑环境变量
+cp .env.example .env
 # 编辑 .env，填入数据库连接信息和 JWT_SECRET
 
-# 启动（开发模式，自动重启）
+# 开发模式（自动重启）
 npm run dev
-
-# 正式启动
-npm start
 ```
 
 后端默认运行在 `http://localhost:3000`
 
-> 首次启动时，程序会自动创建数据表并生成默认管理员账号：
->
+> 首次启动时自动创建数据表并初始化管理员账号：
 > - **账号**：`admin`
 > - **密码**：`admin123`
 
----
-
-### 三、启动前端
+### 二、启动前端
 
 ```bash
 cd frontend
-
-# 安装依赖
 npm install
-
-# 启动开发服务器
 npm run dev
 ```
 

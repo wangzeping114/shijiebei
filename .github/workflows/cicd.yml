@@ -93,6 +93,18 @@ jobs:
               exit 1
             fi
 
+            if [ -n "${{ secrets.DEPLOY_ENV_BACKEND }}" ]; then
+              cat > "$APP_DIR/.env.backend" <<'EOF_ENV'
+${{ secrets.DEPLOY_ENV_BACKEND }}
+EOF_ENV
+              chmod 600 "$APP_DIR/.env.backend"
+              echo "synced .env.backend from DEPLOY_ENV_BACKEND secret"
+            elif [ ! -f "$APP_DIR/.env.backend" ]; then
+              echo ".env.backend not found in $APP_DIR and secret DEPLOY_ENV_BACKEND is empty"
+              echo "Please add repository secret DEPLOY_ENV_BACKEND (full file content)"
+              exit 1
+            fi
+
             cd "$APP_DIR"
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
             chmod +x deploy.sh
