@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     env:
-      REMOTE_APP_DIR: ~/shijiebei
+      REMOTE_APP_DIR: $HOME/shijiebei
       REMOTE_TMP_DIR: /tmp/shijiebei-deploy
     steps:
       - name: Checkout
