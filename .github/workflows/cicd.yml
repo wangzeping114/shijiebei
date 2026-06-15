@@ -93,15 +93,14 @@ jobs:
               exit 1
             fi
 
-            if [ -n "${{ secrets.DEPLOY_ENV_BACKEND }}" ]; then
-              cat > "$APP_DIR/.env.backend" <<'EOF_ENV'
-${{ secrets.DEPLOY_ENV_BACKEND }}
-EOF_ENV
-              chmod 600 "$APP_DIR/.env.backend"
-              echo "synced .env.backend from DEPLOY_ENV_BACKEND secret"
-            elif [ ! -f "$APP_DIR/.env.backend" ]; then
-              echo ".env.backend not found in $APP_DIR and secret DEPLOY_ENV_BACKEND is empty"
-              echo "Please add repository secret DEPLOY_ENV_BACKEND (full file content)"
+            if [ ! -f "$APP_DIR/.env.backend" ]; then
+              echo "ERROR: $APP_DIR/.env.backend not found on server"
+              echo "Please run the following on the server to create it:"
+              echo "  cat > $APP_DIR/.env.backend << 'EOF'"
+              echo "  POSTGRES_USER=postgres"
+              echo "  POSTGRES_PASSWORD=your_password"
+              echo "  ... (see README for full template)"
+              echo "  EOF"
               exit 1
             fi
 
