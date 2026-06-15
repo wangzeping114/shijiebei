@@ -21,6 +21,7 @@
         />
         <el-button type="primary" @click="applySearch">查询</el-button>
         <el-button @click="resetSearch">重置</el-button>
+        <el-button :loading="loading" @click="loadData">刷新</el-button>
       </div>
 
       <el-empty v-if="reportItems.length === 0 && !loading" description="暂无可上报投注数据" />
