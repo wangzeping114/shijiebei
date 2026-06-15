@@ -160,4 +160,27 @@ async function handleRegister() {
   margin-top: 16px;
 }
 .auth-footer a { color: #2d7d2d; font-weight: 600; text-decoration: none; }
+
+@media (max-width: 768px) {
+  .auth-container {
+    padding: calc(12px + env(safe-area-inset-top)) 10px calc(12px + env(safe-area-inset-bottom));
+    align-items: stretch;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 520px;
+    margin: auto;
+    padding: 24px 16px;
+    border-radius: 14px;
+  }
+  .auth-header {
+    margin-bottom: 18px;
+  }
+  .ball-icon {
+    font-size: 38px;
+  }
+  .auth-header h1 {
+    font-size: 20px;
+  }
+}
 </style>

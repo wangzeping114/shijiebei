@@ -10,6 +10,9 @@
         <span class="logo">⚽ 2026 世界杯模拟竞猜</span>
       </div>
       <div class="header-right">
+        <el-button v-if="userStore.isAdmin" text class="admin-entry-btn" @click="router.push('/admin')">
+          管理后台
+        </el-button>
         <el-tag type="success" size="small">{{ userStore.user?.nickname }}</el-tag>
       </div>
     </header>
@@ -38,7 +41,12 @@
       <div class="bet-section">
         <div class="section-header">
           <h3>🎯 选择比分 & 填写投注金额</h3>
-          <span class="hint">每个比分可独立填写金额，金额为0则不参与投注</span>
+          <span class="hint">每个比分可独立填写金额，金额为0则不参与投注；赔率为0表示未开盘</span>
+          <span v-if="userStore.isAdmin" class="hint admin-hint">管理员可点击比分进入赔率编辑页</span>
+        </div>
+
+        <div v-if="isBetLocked" class="bet-locked-tip">
+          {{ lockReason }}，当前页面已锁定，无法进行投注相关操作
         </div>
 
         <div class="odds-table">
@@ -52,9 +60,13 @@
             v-for="odd in match.odds"
             :key="odd.id"
             class="odds-row"
-            :class="{ selected: betAmounts[odd.id] > 0 }"
+            :class="{ selected: betAmounts[odd.id] > 0, disabled: Number(odd.odds_value) <= 0 }"
           >
-            <span class="col-score score-label">
+            <span
+              class="col-score score-label"
+              :class="{ 'score-editable': userStore.isAdmin }"
+              @click="goToOddsConfig"
+            >
               {{ odd.home_score }} : {{ odd.away_score }}
             </span>
             <span class="col-odds odds-value">× {{ odd.odds_value }}</span>
@@ -67,6 +79,7 @@
                 size="small"
                 controls-position="right"
                 placeholder="0"
+                :disabled="isBetLocked || Number(odd.odds_value) <= 0"
               />
             </span>
             <span class="col-payout">
@@ -82,6 +95,26 @@
           暂无赔率配置，请联系管理员
         </div>
 
+        <div v-if="selectedItems.length > 0" class="selected-panel">
+          <div class="selected-title">🧾 已选投注比分（支持修改/删除）</div>
+          <div class="selected-list">
+            <div v-for="odd in selectedItems" :key="`selected-${odd.id}`" class="selected-item">
+              <div class="selected-score-line">
+                <span class="selected-team">{{ match?.home_team }}</span>
+                <span class="selected-score">{{ odd.home_score }} : {{ odd.away_score }}</span>
+                <span class="selected-team">{{ match?.away_team }}</span>
+              </div>
+              <span class="selected-meta">赔率 × {{ Number(odd.odds_value).toFixed(2) }}</span>
+              <span class="selected-meta">金额 ¥{{ Number(betAmounts[odd.id] || 0).toFixed(2) }}</span>
+              <span class="selected-meta payout">赔付 ¥{{ (Number(betAmounts[odd.id] || 0) * Number(odd.odds_value)).toFixed(2) }}</span>
+              <div class="selected-actions">
+                <el-button size="small" :disabled="isBetLocked" @click="openEditSelected(odd)">修改</el-button>
+                <el-button size="small" type="danger" plain :disabled="isBetLocked" @click="removeSelected(odd.id)">删除</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 汇总 & 提交 -->
         <div class="bet-summary" v-if="selectedItems.length > 0">
           <div class="summary-info">
@@ -92,6 +125,7 @@
             type="success"
             size="large"
             :loading="submitting"
+            :disabled="isBetLocked"
             @click="handleSubmit"
             class="submit-btn"
           >
@@ -120,6 +154,43 @@
         <el-button type="success" @click="router.push('/my-bets')">查看我的投注</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="editDialogVisible"
+      title="修改投注比分"
+      width="420px"
+      :close-on-click-modal="false"
+      class="edit-bet-dialog"
+    >
+      <div class="edit-form">
+        <div class="edit-row">
+          <span class="edit-label">目标比分</span>
+          <el-select v-model="editForm.targetOddId" placeholder="请选择比分" style="width: 100%">
+            <el-option
+              v-for="odd in match?.odds || []"
+              :key="odd.id"
+              :label="`${odd.home_score} : ${odd.away_score}（× ${Number(odd.odds_value).toFixed(2)}）`"
+              :value="odd.id"
+            />
+          </el-select>
+        </div>
+        <div class="edit-row">
+          <span class="edit-label">投注金额</span>
+          <el-input-number
+            v-model="editForm.amount"
+            :min="1"
+            :step="10"
+            :precision="0"
+            controls-position="right"
+            style="width: 100%"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveEditSelected">保存修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -141,9 +212,20 @@ const submitting = ref(false)
 const showSlip = ref(false)
 const lastOrder = ref(null)
 const betAmounts = reactive({})
+const editDialogVisible = ref(false)
+const editingOddId = ref(null)
+const editForm = reactive({ targetOddId: null, amount: 10 })
 
 const selectedItems = computed(() =>
   match.value?.odds.filter(o => betAmounts[o.id] > 0) || []
+)
+
+const isBetLocked = computed(() =>
+  ['closed', 'finished'].includes(match.value?.status)
+)
+
+const lockReason = computed(() =>
+  match.value?.status === 'closed' ? '管理员已关闭接单' : '赛事已结束'
 )
 
 const totalAmount = computed(() =>
@@ -167,6 +249,10 @@ function formatTime(t) {
 }
 
 async function handleSubmit() {
+  if (isBetLocked.value) {
+    ElMessage.warning('当前赛事不可投注')
+    return
+  }
   if (selectedItems.value.length === 0) {
     ElMessage.warning('请至少选择一个比分并填写金额')
     return
@@ -196,6 +282,71 @@ function printSlip() {
   window.print()
 }
 
+function goToOddsConfig() {
+  if (!userStore.isAdmin || !match.value?.id || isBetLocked.value) return
+  router.push(`/admin/odds/${match.value.id}`)
+}
+
+function openEditSelected(odd) {
+  if (isBetLocked.value) {
+    ElMessage.warning('当前赛事已锁定，无法修改')
+    return
+  }
+  editingOddId.value = odd.id
+  editForm.targetOddId = odd.id
+  editForm.amount = Number(betAmounts[odd.id] || 0)
+  editDialogVisible.value = true
+}
+
+function removeSelected(oddId) {
+  if (isBetLocked.value) {
+    ElMessage.warning('当前赛事已锁定，无法删除')
+    return
+  }
+  betAmounts[oddId] = 0
+  ElMessage.success('已删除该投注比分')
+}
+
+function saveEditSelected() {
+  if (isBetLocked.value) {
+    ElMessage.warning('当前赛事已锁定，无法修改')
+    return
+  }
+  if (!editingOddId.value) {
+    ElMessage.warning('未找到要修改的投注项')
+    return
+  }
+  if (!editForm.targetOddId) {
+    ElMessage.warning('请选择目标比分')
+    return
+  }
+  if (Number(editForm.amount) <= 0) {
+    ElMessage.warning('投注金额必须大于0')
+    return
+  }
+
+  const sourceId = editingOddId.value
+  const targetId = editForm.targetOddId
+  const targetOdd = match.value?.odds?.find(o => o.id === targetId)
+  if (!targetOdd || Number(targetOdd.odds_value) <= 0) {
+    ElMessage.warning('目标比分赔率未开盘，无法修改到该比分')
+    return
+  }
+  const targetAlreadyHasAmount = targetId !== sourceId && Number(betAmounts[targetId] || 0) > 0
+
+  betAmounts[sourceId] = 0
+  betAmounts[targetId] = Number(editForm.amount)
+
+  editDialogVisible.value = false
+  editingOddId.value = null
+
+  if (targetAlreadyHasAmount) {
+    ElMessage.success('目标比分原有金额已被新金额覆盖')
+    return
+  }
+  ElMessage.success('投注比分修改成功')
+}
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -222,6 +373,14 @@ onMounted(async () => {
   justify-content: space-between;
 }
 .logo { color: #fff; font-size: 18px; font-weight: 700; }
+.admin-entry-btn {
+  color: #ffd700;
+  font-weight: 700;
+  margin-right: 8px;
+  border: 1px solid rgba(255, 215, 0, 0.65);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
 
 .main { max-width: 900px; margin: 28px auto; padding: 0 16px; }
 
@@ -258,13 +417,15 @@ onMounted(async () => {
 }
 .section-header h3 { font-size: 18px; color: #1a4a1a; }
 .hint { font-size: 12px; color: #999; }
+.admin-hint { color: #1a6b1a; font-weight: 600; }
 
-.odds-table { border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
+.odds-table { border: 1px solid #eee; border-radius: 8px; overflow-x: auto; overflow-y: hidden; }
 .odds-header, .odds-row {
   display: grid;
   grid-template-columns: 1fr 100px 180px 130px;
   align-items: center;
   padding: 12px 16px;
+  min-width: 620px;
 }
 .odds-header {
   background: #f5f7fa;
@@ -277,11 +438,249 @@ onMounted(async () => {
   transition: background 0.15s;
 }
 .odds-row.selected { background: #f0faf0; }
+.odds-row.disabled { background: #fafafa; }
+.col-score,
+.col-odds,
+.score-label,
+.odds-value {
+  white-space: nowrap;
+}
 .score-label { font-size: 18px; font-weight: 700; color: #1a4a1a; }
+.score-editable { cursor: pointer; text-decoration: underline; text-decoration-style: dashed; }
+.score-editable:hover { color: #2d7d2d; }
 .odds-value { font-size: 16px; font-weight: 600; color: #e6a020; }
 .empty-payout { color: #ccc; }
 
 .no-odds { text-align: center; color: #aaa; padding: 40px; }
+
+.bet-locked-tip {
+  margin-bottom: 14px;
+  background: #fff4e5;
+  color: #ad6800;
+  border: 1px solid #ffd591;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.selected-panel {
+  margin-top: 18px;
+  background: #fafdf7;
+  border: 1px solid #d9ecc8;
+  border-radius: 10px;
+  padding: 14px;
+}
+.selected-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a4a1a;
+  margin-bottom: 10px;
+}
+.selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.selected-item {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 110px 130px 130px auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #edf3e8;
+}
+.selected-score-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.selected-team {
+  font-size: 13px;
+  color: #456;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.selected-score {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a4a1a;
+  white-space: nowrap;
+}
+.selected-meta {
+  font-size: 13px;
+  color: #666;
+}
+.selected-meta.payout {
+  font-weight: 700;
+  color: #2d7d2d;
+}
+.selected-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.edit-label {
+  font-size: 13px;
+  color: #666;
+}
+
+@media (max-width: 768px) {
+  .header {
+    height: auto;
+    min-height: 52px;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .header-left .el-button {
+    font-size: 13px !important;
+  }
+  .logo {
+    font-size: 15px;
+  }
+  .main {
+    margin: 12px auto;
+    padding: 0 10px;
+  }
+  .match-banner {
+    padding: 16px 12px;
+    border-radius: 12px;
+    gap: 8px;
+  }
+  .team-name {
+    font-size: 26px;
+    line-height: 1.05;
+  }
+  .team-label,
+  .match-time,
+  .venue-label,
+  .round-label {
+    font-size: 11px;
+  }
+  .vs-text {
+    font-size: 20px;
+  }
+  .bet-section {
+    padding: 14px 10px;
+    border-radius: 12px;
+  }
+  .section-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .section-header h3 {
+    font-size: 16px;
+  }
+  .hint {
+    font-size: 12px;
+  }
+  .odds-table {
+    overflow: hidden;
+  }
+  .odds-header, .odds-row {
+    min-width: 0;
+    padding: 10px;
+    grid-template-columns: 86px 74px minmax(130px, 1fr);
+  }
+  .col-payout {
+    display: none;
+  }
+  .score-label {
+    font-size: 16px;
+    line-height: 1;
+  }
+  .odds-value {
+    font-size: 14px;
+  }
+  .selected-item {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 10px;
+  }
+  .selected-actions {
+    justify-content: flex-start;
+  }
+  .summary-info {
+    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: 14px;
+  }
+  .total-amount {
+    font-size: 18px;
+  }
+  .bet-summary {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .submit-btn {
+    width: 100%;
+  }
+
+  :deep(.edit-bet-dialog) {
+    width: calc(100vw - 16px) !important;
+    margin: 8px auto 0 !important;
+    border-radius: 14px;
+  }
+  :deep(.edit-bet-dialog .el-dialog__header) {
+    padding: 14px 14px 8px;
+  }
+  :deep(.edit-bet-dialog .el-dialog__title) {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  :deep(.edit-bet-dialog .el-dialog__body) {
+    padding: 10px 14px 12px;
+  }
+  :deep(.edit-bet-dialog .el-dialog__footer) {
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+    display: flex;
+    gap: 10px;
+  }
+  :deep(.edit-bet-dialog .el-dialog__footer .el-button) {
+    flex: 1;
+    min-width: 0;
+    margin-left: 0 !important;
+    height: 42px;
+  }
+
+  :deep(.slip-dialog) {
+    width: calc(100vw - 16px) !important;
+    margin: 8px auto 0 !important;
+    border-radius: 14px;
+  }
+  :deep(.slip-dialog .el-dialog__body) {
+    padding: 10px 10px 8px;
+  }
+  :deep(.slip-dialog .el-dialog__footer) {
+    padding: 10px 10px calc(12px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  :deep(.slip-dialog .el-dialog__footer .el-button) {
+    width: 100%;
+    margin-left: 0 !important;
+    height: 42px;
+  }
+}
 
 .bet-summary {
   display: flex;

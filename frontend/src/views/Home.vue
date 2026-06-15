@@ -9,6 +9,13 @@
         <el-tag type="success" size="small" class="user-tag">
           {{ userStore.user?.nickname }}
         </el-tag>
+        <el-button
+          v-if="userStore.isAdmin"
+          text
+          type="warning"
+          class="admin-entry-btn"
+          @click="goAdmin"
+        >管理后台</el-button>
         <el-button text @click="router.push('/my-bets')">我的投注</el-button>
         <el-button text type="danger" @click="handleLogout">退出</el-button>
       </div>
@@ -154,6 +161,10 @@ function handleLogout() {
   router.push('/login')
 }
 
+function goAdmin() {
+  router.push('/admin')
+}
+
 async function loadMatches(silent = false) {
   if (!silent) loading.value = true
   try {
@@ -200,6 +211,12 @@ onUnmounted(() => {
 .user-tag { margin-right: 8px; }
 .header-right .el-button { color: #fff; }
 .header-right .el-button:hover { color: #ffe; }
+.admin-entry-btn {
+  font-weight: 700;
+  border: 1px solid rgba(255, 215, 0, 0.65);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
 
 .main {
   max-width: 1100px;
@@ -297,4 +314,79 @@ onUnmounted(() => {
 .match-time { font-size: 12px; color: #888; }
 .venue-inline { color: #aaa; font-size: 11px; }
 .loading-wrap { padding: 40px; background: #fff; border-radius: 12px; }
+
+@media (max-width: 768px) {
+  .header {
+    height: auto;
+    min-height: 56px;
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .logo {
+    font-size: 16px;
+    letter-spacing: 0;
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .main {
+    margin: 14px auto;
+    padding: 0 10px;
+  }
+  .page-title {
+    margin-bottom: 14px;
+    justify-content: space-between;
+  }
+  .page-title h2 {
+    font-size: 20px;
+  }
+  .match-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .match-card {
+    padding: 14px;
+  }
+  .team {
+    font-size: 18px;
+  }
+  .match-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .result-score {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 390px) {
+  .header {
+    padding: 8px;
+  }
+  .logo {
+    font-size: 14px;
+  }
+  .header-right {
+    gap: 4px;
+  }
+  .main {
+    padding: 0 8px;
+  }
+  .match-card {
+    padding: 12px;
+  }
+  .team {
+    font-size: 16px;
+  }
+  .vs {
+    margin: 0 6px;
+    padding: 3px 8px;
+  }
+}
 </style>

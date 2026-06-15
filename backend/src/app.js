@@ -223,15 +223,38 @@ async function initDatabase() {
     await client.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS round VARCHAR(30)`);
     await client.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS venue VARCHAR(100)`);
 
-    // Create default admin if not exists
-    const existing = await client.query("SELECT id FROM users WHERE username = 'admin'");
+    // Ensure default admin account exists and can be used directly in fresh/local setups
+    const defaultAdminUsername = 'admin';
+    const defaultAdminPassword = 'admin123';
+    const defaultAdminNickname = '育';
+
+    const existing = await client.query(
+      "SELECT id, password FROM users WHERE username = $1 LIMIT 1",
+      [defaultAdminUsername]
+    );
+
     if (existing.rows.length === 0) {
-      const hashed = await bcrypt.hash('Admin@123', 10);
+      const hashed = await bcrypt.hash(defaultAdminPassword, 10);
       await client.query(
-        "INSERT INTO users (username, password, nickname, role) VALUES ('admin', $1, '系统管理员', 'admin')",
-        [hashed]
+        'INSERT INTO users (username, password, nickname, role) VALUES ($1, $2, $3, $4)',
+        [defaultAdminUsername, hashed, defaultAdminNickname, 'admin']
       );
-      console.log('默认管理员已创建 → 账号: admin  密码: Admin@123');
+      console.log('默认管理员已创建 → 账号: admin  密码: admin123');
+    } else {
+      const admin = existing.rows[0];
+      const passwordMatched = await bcrypt.compare(defaultAdminPassword, admin.password);
+      if (!passwordMatched) {
+        const hashed = await bcrypt.hash(defaultAdminPassword, 10);
+        await client.query(
+          'UPDATE users SET password = $1 WHERE id = $2',
+          [hashed, admin.id]
+        );
+      }
+      await client.query(
+        "UPDATE users SET role = 'admin', nickname = $1 WHERE id = $2",
+        [defaultAdminNickname, admin.id]
+      );
+      console.log('默认管理员已校准 → 账号: admin  密码: admin123');
     }
 
     await seedWorldCup2026Matches(client);

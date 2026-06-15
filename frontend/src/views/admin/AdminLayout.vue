@@ -16,6 +16,9 @@
         <router-link to="/admin/results" class="nav-item" active-class="active">
           📝 比分录入
         </router-link>
+        <router-link to="/admin/upstream-report" class="nav-item" active-class="active">
+          📄 投注上报
+        </router-link>
         <router-link to="/admin/reports" class="nav-item" active-class="active">
           📊 统计报表
         </router-link>

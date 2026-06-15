@@ -19,7 +19,7 @@
       <!-- 工具栏 -->
       <div class="toolbar">
         <el-button type="primary" :loading="generating" @click="handleGenerate">
-          ⚡ 一键生成默认赔率
+          ⚡ 一键生成默认赔率(0)
         </el-button>
         <el-button type="success" @click="openAddDialog">+ 手动新增</el-button>
         <el-button type="warning" :loading="saving" @click="handleBatchSave">
@@ -37,7 +37,7 @@
           <template #default="{ row }">
             <el-input-number
               v-model="row.odds_value"
-              :min="1.01"
+              :min="0"
               :step="0.1"
               :precision="2"
               size="small"
@@ -68,7 +68,7 @@
           <el-input-number v-model="addForm.away_score" :min="0" :max="20" controls-position="right" />
         </el-form-item>
         <el-form-item label="赔率" prop="odds_value">
-          <el-input-number v-model="addForm.odds_value" :min="1.01" :step="0.1" :precision="2" controls-position="right" />
+          <el-input-number v-model="addForm.odds_value" :min="0" :step="0.1" :precision="2" controls-position="right" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -98,7 +98,7 @@ const addDialogVisible = ref(false)
 const addSaving = ref(false)
 const addFormRef = ref()
 
-const addForm = ref({ home_score: 0, away_score: 0, odds_value: 5.00 })
+const addForm = ref({ home_score: 0, away_score: 0, odds_value: 0.00 })
 const addRules = {
   odds_value: [{ required: true, message: '请填写赔率', trigger: 'blur' }]
 }
@@ -120,7 +120,7 @@ async function loadData() {
 }
 
 async function handleGenerate() {
-  await ElMessageBox.confirm('将为该赛事生成20种常见比分的默认赔率（已有记录不会被覆盖），确认继续？', '提示')
+  await ElMessageBox.confirm('将为该赛事生成20种常见比分，并将默认赔率重置为0，确认继续？', '提示')
   generating.value = true
   try {
     odds.value = await adminAPI.generateOdds(matchId)
@@ -146,7 +146,7 @@ async function handleBatchSave() {
 }
 
 function openAddDialog() {
-  addForm.value = { home_score: 0, away_score: 0, odds_value: 5.00 }
+  addForm.value = { home_score: 0, away_score: 0, odds_value: 0.00 }
   addDialogVisible.value = true
 }
 
