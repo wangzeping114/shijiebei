@@ -6,7 +6,23 @@
     </div>
 
     <div class="table-wrap">
-      <el-table :data="sortedMatches" v-loading="loading" border stripe>
+      <div class="filter-bar">
+        <el-input
+          v-model="keyword"
+          clearable
+          placeholder="筛选球队名称"
+          style="width: 260px"
+        />
+        <el-select v-model="statusFilter" style="width: 160px">
+          <el-option label="全部状态" value="all" />
+          <el-option label="即将开赛" value="upcoming" />
+          <el-option label="进行中" value="ongoing" />
+          <el-option label="已结束" value="finished" />
+          <el-option label="已关闭" value="closed" />
+        </el-select>
+      </div>
+
+      <el-table :data="pagedMatches" v-loading="loading" border stripe>
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column label="赛事" min-width="200">
           <template #default="{ row }">
@@ -53,6 +69,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pager-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          :total="filteredMatches.length"
+        />
+      </div>
     </div>
 
     <!-- 新增/编辑 对话框 -->
@@ -96,7 +122,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminAPI } from '../../api'
@@ -110,6 +136,10 @@ const isEditing = ref(false)
 const formRef = ref()
 const editId = ref(null)
 const nowMs = ref(Date.now())
+const keyword = ref('')
+const statusFilter = ref('all')
+const currentPage = ref(1)
+const pageSize = ref(20)
 let clockTimer = null
 
 const form = ref({ home_team: '', away_team: '', match_time: '', status: 'upcoming' })
@@ -158,6 +188,28 @@ const sortedMatches = computed(() => {
     return new Date(a.match_time).getTime() - new Date(b.match_time).getTime()
   })
   return list
+})
+
+const filteredMatches = computed(() => {
+  const keywordValue = keyword.value.trim().toLowerCase()
+
+  return sortedMatches.value.filter(match => {
+    const statusOk = statusFilter.value === 'all' || match.status === statusFilter.value
+    if (!statusOk) return false
+
+    if (!keywordValue) return true
+    const text = `${match.home_team} ${match.away_team}`.toLowerCase()
+    return text.includes(keywordValue)
+  })
+})
+
+const pagedMatches = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredMatches.value.slice(start, start + pageSize.value)
+})
+
+watch([keyword, statusFilter, pageSize], () => {
+  currentPage.value = 1
 })
 
 function hasStarted(row) {
@@ -289,6 +341,18 @@ onUnmounted(() => {
 }
 .page-header h2 { font-size: 22px; color: #1a4a1a; }
 .table-wrap { background: #fff; border-radius: 12px; padding: 16px; }
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.pager-wrap {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
 .vs { color: #e6a020; margin: 0 6px; font-weight: 600; }
 .score-result { font-size: 16px; font-weight: 700; color: #c00; }
 .pending-score { color: #ccc; }
