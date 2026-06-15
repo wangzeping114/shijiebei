@@ -45,7 +45,7 @@
             <span v-else class="pending-score">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="340">
+        <el-table-column label="操作" width="420">
           <template #default="{ row }">
             <el-button size="small" :disabled="isFinished(row)" @click="openEditDialog(row)">编辑</el-button>
             <el-button
@@ -60,6 +60,12 @@
               :disabled="!canCloseOrders(row)"
               @click="handleCloseOrders(row)"
             >关闭接单</el-button>
+            <el-button
+              v-if="canRestore(row)"
+              size="small"
+              type="success"
+              @click="handleRestore(row)"
+            >恢复赛事</el-button>
             <el-button
               size="small"
               type="danger"
@@ -228,6 +234,10 @@ function canCloseOrders(row) {
   return !isFinished(row) && !hasStarted(row) && row.status !== 'closed'
 }
 
+function canRestore(row) {
+  return row.status === 'finished' || row.status === 'closed'
+}
+
 function openCreateDialog() {
   isEditing.value = false
   form.value = { home_team: '', away_team: '', match_time: '', status: 'upcoming' }
@@ -292,6 +302,21 @@ async function handleSave() {
     ElMessage.error(err.error || '保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+async function handleRestore(row) {
+  await ElMessageBox.confirm(
+    `确认将该赛事恢复为"即将开赛"状态？\n${row.home_team} vs ${row.away_team}\n\n注意：已录入的比分不会清除，投注状态不变。`,
+    '恢复赛事',
+    { type: 'warning', confirmButtonText: '确认恢复', cancelButtonText: '取消' }
+  )
+  try {
+    await adminAPI.updateMatch(row.id, { status: 'upcoming' })
+    ElMessage.success('赛事已恢复为即将开赛')
+    await loadMatches()
+  } catch (err) {
+    ElMessage.error(err.error || '恢复失败')
   }
 }
 
