@@ -51,6 +51,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
+    env:
+      REMOTE_APP_DIR: $HOME/shijiebei
+      REMOTE_TMP_DIR: /tmp/shijiebei-deploy
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,7 +65,9 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: docker-compose.prod.yml,deploy.sh
-          target: /opt/shijiebei
+          target: ${{ env.REMOTE_TMP_DIR }}
+          overwrite: true
+          debug: true
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -72,7 +77,34 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -e
-            cd /opt/shijiebei
+            APP_DIR="${{ env.REMOTE_APP_DIR }}"
+            TMP_DIR="${{ env.REMOTE_TMP_DIR }}"
+            mkdir -p "$APP_DIR"
+
+            if [ -f "$TMP_DIR/deploy.sh" ]; then
+              cp -f "$TMP_DIR/deploy.sh" "$APP_DIR/deploy.sh"
+              cp -f "$TMP_DIR/docker-compose.prod.yml" "$APP_DIR/docker-compose.prod.yml"
+            elif [ -f "$TMP_DIR/shijiebei/deploy.sh" ]; then
+              cp -f "$TMP_DIR/shijiebei/deploy.sh" "$APP_DIR/deploy.sh"
+              cp -f "$TMP_DIR/shijiebei/docker-compose.prod.yml" "$APP_DIR/docker-compose.prod.yml"
+            else
+              echo "deploy files not found under $TMP_DIR"
+              find "$TMP_DIR" -maxdepth 3 -type f || true
+              exit 1
+            fi
+
+            if [ ! -f "$APP_DIR/.env.backend" ]; then
+              echo "ERROR: $APP_DIR/.env.backend not found on server"
+              echo "Please run the following on the server to create it:"
+              echo "  cat > $APP_DIR/.env.backend << 'EOF'"
+              echo "  POSTGRES_USER=postgres"
+              echo "  POSTGRES_PASSWORD=your_password"
+              echo "  ... (see README for full template)"
+              echo "  EOF"
+              exit 1
+            fi
+
+            cd "$APP_DIR"
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
             chmod +x deploy.sh
-            ./deploy.sh
+            APP_DIR="$APP_DIR" ./deploy.sh

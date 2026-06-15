@@ -11,18 +11,100 @@
 
 ---
 
-## 快速启动
+## 生产部署（GitHub Actions 自动 CI/CD）
 
-### 一、准备数据库
+> 推送到 `main` 或 `deploy` 分支后，流水线自动构建镜像并部署到服务器。
 
-1. 安装 PostgreSQL（推荐 14+）
-2. 创建数据库：
+### 第一步：生成 SSH 密钥对（只做一次）
 
-```sql
-CREATE DATABASE worldcup_betting;
+在本地 PowerShell 执行：
+
+```powershell
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f "$env:USERPROFILE\.ssh\deploy_key" -N '""'
 ```
 
-### 二、启动后端
+复制私钥内容备用：
+
+```powershell
+Get-Content "$env:USERPROFILE\.ssh\deploy_key" | Set-Clipboard
+```
+
+### 第二步：将公钥放到服务器（只做一次）
+
+SSH 登录服务器后执行（把公钥内容替换进去）：
+
+```bash
+mkdir -p ~/.ssh
+echo "ssh-ed25519 AAAA...（你的公钥内容）" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+```
+
+### 第三步：在服务器创建 .env.backend（只做一次）
+
+SSH 登录服务器后执行：
+
+```bash
+mkdir -p ~/shijiebei
+
+cat > ~/shijiebei/.env.backend << 'EOF'
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=asdf@1234
+POSTGRES_DB=worldcup_betting
+DB_HOST=db
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=asdf@1234
+DB_NAME=worldcup_betting
+PORT=3000
+JWT_SECRET=（填你自己的长随机字符串，可用 python3 -c "import secrets; print(secrets.token_hex(48))" 生成）
+EOF
+
+chmod 600 ~/shijiebei/.env.backend
+```
+
+> **注意：**`DB_PASSWORD` 和 `POSTGRES_PASSWORD` 必须完全一致。
+
+### 第四步：在 GitHub 仓库配置 Secrets
+
+进入仓库 → **Settings → Secrets and variables → Actions → New repository secret**，添加以下 5 个：
+
+| Secret 名称 | 填写内容 |
+|---|---|
+| `DEPLOY_HOST` | 服务器 IP 地址 |
+| `DEPLOY_USER` | SSH 登录用户名（通常 `root`） |
+| `DEPLOY_SSH_KEY` | 第一步生成的**私钥全文**（含 `-----BEGIN...` 首尾行） |
+| `GHCR_USERNAME` | 你的 GitHub 用户名（小写） |
+| `GHCR_TOKEN` | GitHub PAT，权限勾选 `read:packages`，在 [github.com/settings/tokens](https://github.com/settings/tokens) 生成 |
+
+> 可选：添加 `DEPLOY_ENV_BACKEND`（值为 `.env.backend` 文件全文内容），配置后每次部署会自动同步到服务器，无需手动登服务器修改。
+
+### 第五步：推送代码触发部署
+
+```bash
+git add .
+git commit -m "deploy"
+git push origin main
+```
+
+流水线会自动：
+1. 构建前端和后端 Docker 镜像并推送到 GHCR
+2. 将 `docker-compose.prod.yml` 和 `deploy.sh` 上传到服务器
+3. SSH 登录服务器执行 `deploy.sh` 完成启动
+
+### 查询数据库（服务器本机）
+
+数据库服务仅对本机开放，端口 `55432`：
+
+```bash
+psql -h 127.0.0.1 -p 55432 -U postgres -d worldcup_betting
+```
+
+---
+
+## 本地开发启动
+
+### 一、启动后端
 
 ```bash
 cd backend
@@ -30,34 +112,25 @@ cd backend
 # 安装依赖
 npm install
 
-# 复制环境变量文件
-copy .env.example .env
+# 复制并编辑环境变量
+cp .env.example .env
 # 编辑 .env，填入数据库连接信息和 JWT_SECRET
 
-# 启动（开发模式，自动重启）
+# 开发模式（自动重启）
 npm run dev
-
-# 正式启动
-npm start
 ```
 
 后端默认运行在 `http://localhost:3000`
 
-> 首次启动时，程序会自动创建数据表并生成默认管理员账号：
+> 首次启动时自动创建数据表并初始化管理员账号：
 > - **账号**：`admin`
-> - **密码**：`Admin@123`
+> - **密码**：`admin123`
 
----
-
-### 三、启动前端
+### 二、启动前端
 
 ```bash
 cd frontend
-
-# 安装依赖
 npm install
-
-# 启动开发服务器
 npm run dev
 ```
 
@@ -69,33 +142,33 @@ npm run dev
 
 ### 用户端
 
-| 功能 | 说明 |
-|------|------|
-| 注册/登录 | 独立账号体系，填写用户名+昵称+密码 |
-| 赛事列表 | 查看所有赛事，按状态分组（即将开赛/进行中/已结束） |
-| 投注 | 选择比分，为每个比分独立填写投注金额 |
-| 投注单 | 提交后弹出格式化投注单（可打印） |
-| 我的投注 | 查看历史投注记录及中奖情况 |
+| 功能      | 说明                                               |
+| --------- | -------------------------------------------------- |
+| 注册/登录 | 独立账号体系，填写用户名+昵称+密码                 |
+| 赛事列表  | 查看所有赛事，按状态分组（即将开赛/进行中/已结束） |
+| 投注      | 选择比分，为每个比分独立填写投注金额               |
+| 投注单    | 提交后弹出格式化投注单（可打印）                   |
+| 我的投注  | 查看历史投注记录及中奖情况                         |
 
 ### 管理后台（`/admin`）
 
-| 功能 | 说明 |
-|------|------|
-| 赛事管理 | 新增/编辑/删除赛事，修改状态 |
-| 赔率配置 | 一键生成20种默认比分赔率，或手动添加/修改/删除 |
-| 比分录入 | 手动录入最终比分，系统自动完成结算 |
+| 功能     | 说明                                                 |
+| -------- | ---------------------------------------------------- |
+| 赛事管理 | 新增/编辑/删除赛事，修改状态                         |
+| 赔率配置 | 一键生成20种默认比分赔率，或手动添加/修改/删除       |
+| 比分录入 | 手动录入最终比分，系统自动完成结算                   |
 | 统计报表 | 查看每场赛事的投注汇总、中奖用户名单、各用户投注明细 |
 
 ---
 
 ## 赛事状态说明
 
-| 状态 | 说明 |
-|------|------|
-| `upcoming` | 即将开赛（可投注） |
-| `ongoing` | 进行中（可投注） |
+| 状态         | 说明                         |
+| ------------ | ---------------------------- |
+| `upcoming` | 即将开赛（可投注）           |
+| `ongoing`  | 进行中（可投注）             |
 | `finished` | 已结束（已录入比分，已结算） |
-| `closed` | 已关闭（不可投注） |
+| `closed`   | 已关闭（不可投注）           |
 
 ---
 

@@ -82,11 +82,11 @@ router.get('/odds/:matchId', async (req, res) => {
 // 生成默认赔率
 router.post('/odds/:matchId/generate', async (req, res) => {
   const defaults = [
-    [0, 0, 8.50], [1, 0, 6.00], [0, 1, 6.00], [1, 1, 5.50],
-    [2, 0, 7.00], [0, 2, 7.00], [2, 1, 5.00], [1, 2, 5.00],
-    [2, 2, 9.00], [3, 0, 10.00], [0, 3, 10.00], [3, 1, 9.00],
-    [1, 3, 9.00], [3, 2, 12.00], [2, 3, 12.00], [4, 0, 18.00],
-    [0, 4, 18.00], [4, 1, 15.00], [1, 4, 15.00], [3, 3, 20.00]
+    [0, 0, 0.00], [1, 0, 0.00], [0, 1, 0.00], [1, 1, 0.00],
+    [2, 0, 0.00], [0, 2, 0.00], [2, 1, 0.00], [1, 2, 0.00],
+    [2, 2, 0.00], [3, 0, 0.00], [0, 3, 0.00], [3, 1, 0.00],
+    [1, 3, 0.00], [3, 2, 0.00], [2, 3, 0.00], [4, 0, 0.00],
+    [0, 4, 0.00], [4, 1, 0.00], [1, 4, 0.00], [3, 3, 0.00]
   ];
 
   const client = await pool.connect();
@@ -96,7 +96,7 @@ router.post('/odds/:matchId/generate', async (req, res) => {
       await client.query(
         `INSERT INTO odds (match_id, home_score, away_score, odds_value)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (match_id, home_score, away_score) DO NOTHING`,
+         ON CONFLICT (match_id, home_score, away_score) DO UPDATE SET odds_value = EXCLUDED.odds_value`,
         [req.params.matchId, h, a, o]
       );
     }
@@ -118,6 +118,9 @@ router.post('/odds/:matchId/generate', async (req, res) => {
 router.put('/odds/:matchId', async (req, res) => {
   const { odds } = req.body; // [{ id?, home_score, away_score, odds_value }]
   if (!odds || odds.length === 0) return res.status(400).json({ error: '赔率数据不能为空' });
+  if (odds.some(o => Number(o.odds_value) < 0)) {
+    return res.status(400).json({ error: '赔率不能小于0' });
+  }
 
   const client = await pool.connect();
   try {
@@ -154,8 +157,11 @@ router.put('/odds/:matchId', async (req, res) => {
 // 新增单条赔率
 router.post('/odds/:matchId', async (req, res) => {
   const { home_score, away_score, odds_value } = req.body;
-  if (home_score === undefined || away_score === undefined || !odds_value) {
+  if (home_score === undefined || away_score === undefined || odds_value === undefined || odds_value === null) {
     return res.status(400).json({ error: '请填写完整赔率信息' });
+  }
+  if (Number(odds_value) < 0) {
+    return res.status(400).json({ error: '赔率不能小于0' });
   }
   try {
     const result = await pool.query(
@@ -236,6 +242,98 @@ router.put('/matches/:id/result', async (req, res) => {
 });
 
 // ═══════════════ 统计报表 ═══════════════
+
+// 投注上报清单（按赛事汇总，默认仅 pending）
+router.get('/upstream-report', async (req, res) => {
+  const orderStatus = (req.query.orderStatus || 'pending').trim();
+
+  try {
+    const matchesResult = orderStatus === 'all'
+      ? await pool.query(
+          `SELECT DISTINCT m.id, m.home_team, m.away_team, m.match_time
+           FROM bet_orders bo
+           JOIN matches m ON bo.match_id = m.id
+           ORDER BY m.match_time ASC, m.id ASC`
+        )
+      : await pool.query(
+          `SELECT DISTINCT m.id, m.home_team, m.away_team, m.match_time
+           FROM bet_orders bo
+           JOIN matches m ON bo.match_id = m.id
+           WHERE bo.status = $1
+           ORDER BY m.match_time ASC, m.id ASC`,
+          [orderStatus]
+        );
+
+    const data = [];
+
+    for (const match of matchesResult.rows) {
+      const linesResult = orderStatus === 'all'
+        ? await pool.query(
+            `SELECT bi.home_score, bi.away_score, bi.odds_value,
+                    SUM(bi.amount)::numeric(12,2) AS amount
+             FROM bet_orders bo
+             JOIN bet_items bi ON bi.order_id = bo.id
+             WHERE bo.match_id = $1
+             GROUP BY bi.home_score, bi.away_score, bi.odds_value
+             ORDER BY bi.home_score ASC, bi.away_score ASC`,
+            [match.id]
+          )
+        : await pool.query(
+            `SELECT bi.home_score, bi.away_score, bi.odds_value,
+                    SUM(bi.amount)::numeric(12,2) AS amount
+             FROM bet_orders bo
+             JOIN bet_items bi ON bi.order_id = bo.id
+             WHERE bo.match_id = $1 AND bo.status = $2
+             GROUP BY bi.home_score, bi.away_score, bi.odds_value
+             ORDER BY bi.home_score ASC, bi.away_score ASC`,
+            [match.id, orderStatus]
+          );
+
+      const detailsResult = orderStatus === 'all'
+        ? await pool.query(
+            `SELECT bo.order_no, bo.created_at, bo.status,
+                    u.username, u.nickname,
+                    bi.home_score, bi.away_score, bi.odds_value, bi.amount
+             FROM bet_orders bo
+             JOIN users u ON u.id = bo.user_id
+             JOIN bet_items bi ON bi.order_id = bo.id
+             WHERE bo.match_id = $1
+             ORDER BY bo.created_at DESC, bo.order_no ASC, bi.id ASC`,
+            [match.id]
+          )
+        : await pool.query(
+            `SELECT bo.order_no, bo.created_at, bo.status,
+                    u.username, u.nickname,
+                    bi.home_score, bi.away_score, bi.odds_value, bi.amount
+             FROM bet_orders bo
+             JOIN users u ON u.id = bo.user_id
+             JOIN bet_items bi ON bi.order_id = bo.id
+             WHERE bo.match_id = $1 AND bo.status = $2
+             ORDER BY bo.created_at DESC, bo.order_no ASC, bi.id ASC`,
+            [match.id, orderStatus]
+          );
+
+      if (linesResult.rows.length === 0) continue;
+
+      const totalAmount = linesResult.rows.reduce((sum, row) => sum + Number(row.amount), 0);
+      data.push({
+        match,
+        lines: linesResult.rows,
+        details: detailsResult.rows,
+        total_amount: Number(totalAmount.toFixed(2))
+      });
+    }
+
+    res.json({
+      order_status: orderStatus,
+      generated_at: new Date().toISOString(),
+      items: data
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '获取投注上报清单失败' });
+  }
+});
 
 // 已结束赛事列表
 router.get('/reports', async (req, res) => {

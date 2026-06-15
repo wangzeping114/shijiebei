@@ -36,7 +36,8 @@ const routes = [
       { path: 'matches', component: () => import('../views/admin/MatchManage.vue') },
       { path: 'odds/:matchId', component: () => import('../views/admin/OddsConfig.vue') },
       { path: 'results', component: () => import('../views/admin/ResultEntry.vue') },
-      { path: 'reports', component: () => import('../views/admin/Reports.vue') }
+      { path: 'reports', component: () => import('../views/admin/Reports.vue') },
+      { path: 'upstream-report', component: () => import('../views/admin/UpstreamReport.vue') }
     ]
   },
   { path: '/:pathMatch(.*)*', redirect: '/' }

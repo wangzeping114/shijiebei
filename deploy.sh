@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/opt/shijiebei"
+APP_DIR="${APP_DIR:-$HOME/shijiebei}"
 
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"

@@ -34,7 +34,9 @@ export const matchAPI = {
 
 export const betAPI = {
   placeBet: data => api.post('/bets', data),
-  getMyBets: () => api.get('/bets/my')
+  getMyBets: () => api.get('/bets/my'),
+  updateBetItem: (itemId, data) => api.put(`/bets/items/${itemId}`, data),
+  deleteBetItem: itemId => api.delete(`/bets/items/${itemId}`)
 }
 
 export const adminAPI = {
@@ -56,5 +58,6 @@ export const adminAPI = {
 
   // 报表
   getReportList: () => api.get('/admin/reports'),
-  getReport: matchId => api.get(`/admin/reports/${matchId}`)
+  getReport: matchId => api.get(`/admin/reports/${matchId}`),
+  getUpstreamReport: (orderStatus = 'pending') => api.get(`/admin/upstream-report?orderStatus=${encodeURIComponent(orderStatus)}`)
 }

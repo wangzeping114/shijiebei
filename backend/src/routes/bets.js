@@ -4,6 +4,34 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
+async function getEditableBetItem(client, itemId, userId) {
+  const result = await client.query(
+    `SELECT bi.*, bo.user_id, bo.status AS order_status, bo.match_id,
+            m.status AS match_status, m.match_time
+     FROM bet_items bi
+     JOIN bet_orders bo ON bi.order_id = bo.id
+     JOIN matches m ON bo.match_id = m.id
+     WHERE bi.id = $1 AND bo.user_id = $2`,
+    [itemId, userId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error('投注项不存在');
+  }
+
+  const item = result.rows[0];
+  if (item.order_status !== 'pending') {
+    throw new Error('订单已结算，无法操作');
+  }
+
+  const started = Date.now() >= new Date(item.match_time).getTime();
+  if (started || ['closed', 'finished'].includes(item.match_status)) {
+    throw new Error('赛事已开始或已关闭接单，无法操作');
+  }
+
+  return item;
+}
+
 // 获取我的投注记录（放在 POST / 之前避免路由冲突）
 router.get('/my', authenticate, async (req, res) => {
   try {
@@ -82,6 +110,9 @@ router.post('/', authenticate, async (req, res) => {
         throw new Error(`比分 ${item.home_score}:${item.away_score} 不在赔率表中`);
       }
       const currentOdds = oddsResult.rows[0].odds_value;
+      if (Number(currentOdds) <= 0) {
+        throw new Error(`比分 ${item.home_score}:${item.away_score} 赔率未配置，暂不可投注`);
+      }
 
       const itemResult = await client.query(
         'INSERT INTO bet_items (order_id, home_score, away_score, odds_value, amount) VALUES ($1, $2, $3, $4, $5) RETURNING *',
@@ -99,6 +130,107 @@ router.post('/', authenticate, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(400).json({ error: err.message || '投注失败' });
+  } finally {
+    client.release();
+  }
+});
+
+// 修改单条投注比分/金额（仅未开赛且未关闭接单）
+router.put('/items/:itemId', authenticate, async (req, res) => {
+  const itemId = Number(req.params.itemId);
+  const { home_score, away_score, amount } = req.body;
+
+  if (!Number.isInteger(itemId) || itemId <= 0) {
+    return res.status(400).json({ error: '参数错误' });
+  }
+  if (home_score === undefined || away_score === undefined) {
+    return res.status(400).json({ error: '请提供目标比分' });
+  }
+  if (Number(amount) <= 0) {
+    return res.status(400).json({ error: '投注金额必须大于0' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const item = await getEditableBetItem(client, itemId, req.user.id);
+
+    const odds = await client.query(
+      'SELECT odds_value FROM odds WHERE match_id = $1 AND home_score = $2 AND away_score = $3 LIMIT 1',
+      [item.match_id, home_score, away_score]
+    );
+    if (odds.rows.length === 0) {
+      throw new Error('目标比分不在赔率表中');
+    }
+    if (Number(odds.rows[0].odds_value) <= 0) {
+      throw new Error('目标比分赔率未配置，无法修改为该比分');
+    }
+
+    const updated = await client.query(
+      `UPDATE bet_items
+       SET home_score = $1, away_score = $2, odds_value = $3, amount = $4
+       WHERE id = $5
+       RETURNING *`,
+      [home_score, away_score, odds.rows[0].odds_value, amount, itemId]
+    );
+
+    await client.query(
+      `UPDATE bet_orders
+       SET total_amount = (
+         SELECT COALESCE(SUM(amount), 0) FROM bet_items WHERE order_id = $1
+       )
+       WHERE id = $1`,
+      [item.order_id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: '修改成功', item: updated.rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message || '修改失败' });
+  } finally {
+    client.release();
+  }
+});
+
+// 删除单条投注比分（仅未开赛且未关闭接单）
+router.delete('/items/:itemId', authenticate, async (req, res) => {
+  const itemId = Number(req.params.itemId);
+  if (!Number.isInteger(itemId) || itemId <= 0) {
+    return res.status(400).json({ error: '参数错误' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const item = await getEditableBetItem(client, itemId, req.user.id);
+    await client.query('DELETE FROM bet_items WHERE id = $1', [itemId]);
+
+    const left = await client.query('SELECT COUNT(*)::int AS count FROM bet_items WHERE order_id = $1', [item.order_id]);
+    const leftCount = left.rows[0].count;
+
+    if (leftCount === 0) {
+      await client.query('DELETE FROM bet_orders WHERE id = $1', [item.order_id]);
+      await client.query('COMMIT');
+      return res.json({ message: '已删除该投注项，空订单已移除', order_deleted: true });
+    }
+
+    await client.query(
+      `UPDATE bet_orders
+       SET total_amount = (
+         SELECT COALESCE(SUM(amount), 0) FROM bet_items WHERE order_id = $1
+       )
+       WHERE id = $1`,
+      [item.order_id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: '删除成功', order_deleted: false });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message || '删除失败' });
   } finally {
     client.release();
   }

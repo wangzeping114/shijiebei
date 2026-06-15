@@ -6,7 +6,23 @@
     </div>
 
     <div class="table-wrap">
-      <el-table :data="matches" v-loading="loading" border stripe>
+      <div class="filter-bar">
+        <el-input
+          v-model="keyword"
+          clearable
+          placeholder="筛选球队名称"
+          style="width: 260px"
+        />
+        <el-select v-model="statusFilter" style="width: 160px">
+          <el-option label="全部状态" value="all" />
+          <el-option label="即将开赛" value="upcoming" />
+          <el-option label="进行中" value="ongoing" />
+          <el-option label="已结束" value="finished" />
+          <el-option label="已关闭" value="closed" />
+        </el-select>
+      </div>
+
+      <el-table :data="pagedMatches" v-loading="loading" border stripe>
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column label="赛事" min-width="200">
           <template #default="{ row }">
@@ -29,18 +45,46 @@
             <span v-else class="pending-score">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="260">
+        <el-table-column label="操作" width="420">
           <template #default="{ row }">
-            <el-button size="small" @click="openEditDialog(row)">编辑</el-button>
-            <el-button size="small" type="warning" @click="goOddsConfig(row.id)">赔率配置</el-button>
+            <el-button size="small" :disabled="isFinished(row)" @click="openEditDialog(row)">编辑</el-button>
+            <el-button
+              size="small"
+              type="warning"
+              :disabled="!canConfigOdds(row)"
+              @click="goOddsConfig(row)"
+            >赔率配置</el-button>
+            <el-button
+              size="small"
+              type="info"
+              :disabled="!canCloseOrders(row)"
+              @click="handleCloseOrders(row)"
+            >关闭接单</el-button>
+            <el-button
+              v-if="canRestore(row)"
+              size="small"
+              type="success"
+              @click="handleRestore(row)"
+            >恢复赛事</el-button>
             <el-button
               size="small"
               type="danger"
+              :disabled="isFinished(row)"
               @click="handleDelete(row.id)"
             >删除</el-button>
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pager-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          :total="filteredMatches.length"
+        />
+      </div>
     </div>
 
     <!-- 新增/编辑 对话框 -->
@@ -84,7 +128,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminAPI } from '../../api'
@@ -97,6 +141,12 @@ const dialogVisible = ref(false)
 const isEditing = ref(false)
 const formRef = ref()
 const editId = ref(null)
+const nowMs = ref(Date.now())
+const keyword = ref('')
+const statusFilter = ref('all')
+const currentPage = ref(1)
+const pageSize = ref(20)
+let clockTimer = null
 
 const form = ref({ home_team: '', away_team: '', match_time: '', status: 'upcoming' })
 
@@ -115,8 +165,77 @@ function statusTagType(s) {
 function formatTime(t) {
   return new Date(t).toLocaleString('zh-CN', {
     year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Shanghai'
   })
+}
+
+function beijingDateKey(dateLike) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(dateLike))
+}
+
+const todayKey = computed(() => beijingDateKey(nowMs.value))
+
+function isTodayMatch(row) {
+  return beijingDateKey(row.match_time) === todayKey.value
+}
+
+const sortedMatches = computed(() => {
+  const list = [...matches.value]
+  list.sort((a, b) => {
+    const aToday = isTodayMatch(a)
+    const bToday = isTodayMatch(b)
+    if (aToday !== bToday) return aToday ? -1 : 1
+    return new Date(a.match_time).getTime() - new Date(b.match_time).getTime()
+  })
+  return list
+})
+
+const filteredMatches = computed(() => {
+  const keywordValue = keyword.value.trim().toLowerCase()
+
+  return sortedMatches.value.filter(match => {
+    const statusOk = statusFilter.value === 'all' || match.status === statusFilter.value
+    if (!statusOk) return false
+
+    if (!keywordValue) return true
+    const text = `${match.home_team} ${match.away_team}`.toLowerCase()
+    return text.includes(keywordValue)
+  })
+})
+
+const pagedMatches = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredMatches.value.slice(start, start + pageSize.value)
+})
+
+watch([keyword, statusFilter, pageSize], () => {
+  currentPage.value = 1
+})
+
+function hasStarted(row) {
+  return nowMs.value >= new Date(row.match_time).getTime()
+}
+
+function isFinished(row) {
+  return row.status === 'finished'
+}
+
+function canConfigOdds(row) {
+  return !isFinished(row) && !hasStarted(row)
+}
+
+function canCloseOrders(row) {
+  return !isFinished(row) && !hasStarted(row) && row.status !== 'closed'
+}
+
+function canRestore(row) {
+  return row.status === 'finished' || row.status === 'closed'
 }
 
 function openCreateDialog() {
@@ -137,8 +256,33 @@ function openEditDialog(row) {
   dialogVisible.value = true
 }
 
-function goOddsConfig(id) {
-  router.push(`/admin/odds/${id}`)
+function goOddsConfig(row) {
+  if (!canConfigOdds(row)) {
+    ElMessage.warning('当前时间或赛事状态不允许修改赔率')
+    return
+  }
+  router.push(`/admin/odds/${row.id}`)
+}
+
+async function handleCloseOrders(row) {
+  if (!canCloseOrders(row)) {
+    ElMessage.warning('当前时间或赛事状态不允许关闭接单')
+    return
+  }
+
+  await ElMessageBox.confirm(
+    `确认关闭该场赛事接单吗？\n${row.home_team} vs ${row.away_team}`,
+    '关闭接单',
+    { type: 'warning', confirmButtonText: '确认关闭', cancelButtonText: '取消' }
+  )
+
+  try {
+    await adminAPI.updateMatch(row.id, { status: 'closed' })
+    ElMessage.success('已关闭接单')
+    await loadMatches()
+  } catch (err) {
+    ElMessage.error(err.error || '关闭接单失败')
+  }
 }
 
 async function handleSave() {
@@ -158,6 +302,21 @@ async function handleSave() {
     ElMessage.error(err.error || '保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+async function handleRestore(row) {
+  await ElMessageBox.confirm(
+    `确认将该赛事恢复为"即将开赛"状态？\n${row.home_team} vs ${row.away_team}\n\n注意：已录入的比分不会清除，投注状态不变。`,
+    '恢复赛事',
+    { type: 'warning', confirmButtonText: '确认恢复', cancelButtonText: '取消' }
+  )
+  try {
+    await adminAPI.updateMatch(row.id, { status: 'upcoming' })
+    ElMessage.success('赛事已恢复为即将开赛')
+    await loadMatches()
+  } catch (err) {
+    ElMessage.error(err.error || '恢复失败')
   }
 }
 
@@ -185,7 +344,16 @@ async function loadMatches() {
   }
 }
 
-onMounted(loadMatches)
+onMounted(async () => {
+  await loadMatches()
+  clockTimer = setInterval(() => {
+    nowMs.value = Date.now()
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
+})
 </script>
 
 <style scoped>
@@ -198,6 +366,18 @@ onMounted(loadMatches)
 }
 .page-header h2 { font-size: 22px; color: #1a4a1a; }
 .table-wrap { background: #fff; border-radius: 12px; padding: 16px; }
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.pager-wrap {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
 .vs { color: #e6a020; margin: 0 6px; font-weight: 600; }
 .score-result { font-size: 16px; font-weight: 700; color: #c00; }
 .pending-score { color: #ccc; }

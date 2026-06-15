@@ -88,7 +88,7 @@ function formatDateTime(t) {
   padding: 8px 0;
 }
 .slip {
-  width: 360px;
+  width: min(360px, 100%);
   background: #fffdf5;
   border: 1px dashed #c8b560;
   border-radius: 4px;
@@ -134,20 +134,53 @@ function formatDateTime(t) {
 .total-amount { font-size: 18px; font-weight: 900; color: #c00; }
 
 .items-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 90px 100px;
+  gap: 8px;
   font-size: 12px;
   color: #888;
   margin: 4px 0;
 }
 .bet-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 90px 100px;
+  gap: 8px;
+  align-items: center;
   margin: 2px 0;
   font-weight: 600;
 }
-.ic-score { width: 100px; font-size: 15px; color: #1a4a1a; }
-.ic-odds { width: 80px; color: #c47900; }
-.ic-amount { flex: 1; color: #333; text-align: right; }
+.ic-score { font-size: 15px; color: #1a4a1a; }
+.ic-odds { color: #c47900; }
+.ic-amount { color: #333; text-align: right; }
 
 .bottom-div { margin-top: 10px; }
 .slip-footer { text-align: center; font-size: 11px; color: #aaa; margin-top: 4px; }
+
+@media (max-width: 768px) {
+  .slip-wrap {
+    padding: 4px 0;
+  }
+  .slip {
+    width: 100%;
+    padding: 12px 12px;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .slip-title {
+    font-size: 14px;
+    letter-spacing: 0;
+  }
+  .label {
+    min-width: 78px;
+  }
+  .items-header,
+  .bet-item {
+    grid-template-columns: 1fr 78px 88px;
+    gap: 6px;
+  }
+  .ic-score {
+    font-size: 14px;
+    white-space: nowrap;
+  }
+}
 </style>

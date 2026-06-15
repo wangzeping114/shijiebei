@@ -132,4 +132,27 @@ async function handleLogin() {
   font-weight: 600;
   text-decoration: none;
 }
+
+@media (max-width: 768px) {
+  .auth-container {
+    padding: calc(12px + env(safe-area-inset-top)) 10px calc(12px + env(safe-area-inset-bottom));
+    align-items: stretch;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 480px;
+    margin: auto;
+    padding: 24px 16px;
+    border-radius: 14px;
+  }
+  .auth-header {
+    margin-bottom: 20px;
+  }
+  .ball-icon {
+    font-size: 38px;
+  }
+  .auth-header h1 {
+    font-size: 20px;
+  }
+}
 </style>
