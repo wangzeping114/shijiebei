@@ -162,9 +162,32 @@ function statusLabel(s) {
 function statusTagType(s) {
   return { upcoming: 'primary', ongoing: 'warning', finished: 'info', closed: 'danger' }[s] || ''
 }
+
+function normalizeMatchTime(value) {
+  if (!value) return ''
+  let text = String(value).trim()
+  if (!text) return ''
+  if (text.includes('.')) text = text.split('.')[0]
+  text = text.replace(' ', 'T')
+  if (text.endsWith('Z')) text = text.slice(0, -1)
+  text = text.replace(/([+-]\d{2}:\d{2})$/, '')
+  return text.slice(0, 19)
+}
+
+function parseBeijingMs(value) {
+  const normalized = normalizeMatchTime(value)
+  if (!normalized) return 0
+  return new Date(`${normalized}+08:00`).getTime()
+}
+
+function beijingDateKeyFromMatch(value) {
+  const normalized = normalizeMatchTime(value)
+  return normalized ? normalized.slice(0, 10) : ''
+}
+
 function formatTime(t) {
   if (!t) return ''
-  const s = String(t).replace('T', ' ').replace(/\.\d+.*$/, '')
+  const s = normalizeMatchTime(t)
   return s.slice(0, 16).replace(/-/g, '/')
 }
 
@@ -180,7 +203,7 @@ function beijingDateKey(dateLike) {
 const todayKey = computed(() => beijingDateKey(nowMs.value))
 
 function isTodayMatch(row) {
-  return beijingDateKey(row.match_time) === todayKey.value
+  return beijingDateKeyFromMatch(row.match_time) === todayKey.value
 }
 
 const sortedMatches = computed(() => {
@@ -189,7 +212,7 @@ const sortedMatches = computed(() => {
     const aToday = isTodayMatch(a)
     const bToday = isTodayMatch(b)
     if (aToday !== bToday) return aToday ? -1 : 1
-    return new Date(a.match_time).getTime() - new Date(b.match_time).getTime()
+    return parseBeijingMs(a.match_time) - parseBeijingMs(b.match_time)
   })
   return list
 })
@@ -217,7 +240,7 @@ watch([keyword, statusFilter, pageSize], () => {
 })
 
 function hasStarted(row) {
-  return nowMs.value >= new Date(row.match_time).getTime()
+  return nowMs.value >= parseBeijingMs(row.match_time)
 }
 
 function isFinished(row) {
@@ -248,7 +271,7 @@ function openEditDialog(row) {
   form.value = {
     home_team: row.home_team,
     away_team: row.away_team,
-    match_time: row.match_time,
+    match_time: normalizeMatchTime(row.match_time),
     status: row.status
   }
   dialogVisible.value = true
@@ -287,11 +310,16 @@ async function handleSave() {
   await formRef.value.validate()
   saving.value = true
   try {
+    const payload = {
+      ...form.value,
+      match_time: normalizeMatchTime(form.value.match_time)
+    }
+
     if (isEditing.value) {
-      await adminAPI.updateMatch(editId.value, form.value)
+      await adminAPI.updateMatch(editId.value, payload)
       ElMessage.success('赛事更新成功')
     } else {
-      await adminAPI.createMatch(form.value)
+      await adminAPI.createMatch(payload)
       ElMessage.success('赛事创建成功')
     }
     dialogVisible.value = false

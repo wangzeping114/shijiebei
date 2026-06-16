@@ -5,12 +5,33 @@ const { requireAdmin } = require('../middleware/auth');
 const router = express.Router();
 router.use(requireAdmin);
 
+const MATCH_SELECT_FIELDS = `
+  id,
+  home_team,
+  away_team,
+  to_char(match_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS match_time,
+  status,
+  home_score,
+  away_score,
+  created_at,
+  round,
+  venue
+`;
+
+async function getMatchById(matchId) {
+  const result = await pool.query(
+    `SELECT ${MATCH_SELECT_FIELDS} FROM matches WHERE id = $1`,
+    [matchId]
+  );
+  return result.rows[0] || null;
+}
+
 // ═══════════════ 赛事管理 ═══════════════
 
 // 获取所有赛事
 router.get('/matches', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM matches ORDER BY match_time ASC');
+    const result = await pool.query(`SELECT ${MATCH_SELECT_FIELDS} FROM matches ORDER BY match_time ASC`);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: '获取赛事失败' });
@@ -25,10 +46,11 @@ router.post('/matches', async (req, res) => {
   }
   try {
     const result = await pool.query(
-      'INSERT INTO matches (home_team, away_team, match_time) VALUES ($1, $2, $3) RETURNING *',
+      'INSERT INTO matches (home_team, away_team, match_time) VALUES ($1, $2, $3) RETURNING id',
       [home_team, away_team, match_time]
     );
-    res.status(201).json(result.rows[0]);
+    const created = await getMatchById(result.rows[0].id);
+    res.status(201).json(created);
   } catch (err) {
     res.status(500).json({ error: '创建赛事失败' });
   }
@@ -44,11 +66,12 @@ router.put('/matches/:id', async (req, res) => {
            away_team  = COALESCE($2, away_team),
            match_time = COALESCE($3, match_time),
            status     = COALESCE($4, status)
-       WHERE id = $5 RETURNING *`,
+       WHERE id = $5 RETURNING id`,
       [home_team, away_team, match_time, status, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: '赛事不存在' });
-    res.json(result.rows[0]);
+    const updated = await getMatchById(result.rows[0].id);
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ error: '更新赛事失败' });
   }

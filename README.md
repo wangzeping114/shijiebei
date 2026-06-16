@@ -69,13 +69,13 @@ chmod 600 ~/shijiebei/.env.backend
 
 进入仓库 → **Settings → Secrets and variables → Actions → New repository secret**，添加以下 5 个：
 
-| Secret 名称 | 填写内容 |
-|---|---|
-| `DEPLOY_HOST` | 服务器 IP 地址 |
-| `DEPLOY_USER` | SSH 登录用户名（通常 `root`） |
-| `DEPLOY_SSH_KEY` | 第一步生成的**私钥全文**（含 `-----BEGIN...` 首尾行） |
-| `GHCR_USERNAME` | 你的 GitHub 用户名（小写） |
-| `GHCR_TOKEN` | GitHub PAT，权限勾选 `read:packages`，在 [github.com/settings/tokens](https://github.com/settings/tokens) 生成 |
+| Secret 名称        | 填写内容                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `DEPLOY_HOST`    | 服务器 IP 地址                                                                                                |
+| `DEPLOY_USER`    | SSH 登录用户名（通常 `root`）                                                                               |
+| `DEPLOY_SSH_KEY` | 第一步生成的**私钥全文**（含 `-----BEGIN...` 首尾行）                                                 |
+| `GHCR_USERNAME`  | 你的 GitHub 用户名（小写）                                                                                    |
+| `GHCR_TOKEN`     | GitHub PAT，权限勾选 `read:packages`，在 [github.com/settings/tokens](https://github.com/settings/tokens) 生成 |
 
 > 可选：添加 `DEPLOY_ENV_BACKEND`（值为 `.env.backend` 文件全文内容），配置后每次部署会自动同步到服务器，无需手动登服务器修改。
 
@@ -88,6 +88,7 @@ git push origin main
 ```
 
 流水线会自动：
+
 1. 构建前端和后端 Docker 镜像并推送到 GHCR
 2. 将 `docker-compose.prod.yml` 和 `deploy.sh` 上传到服务器
 3. SSH 登录服务器执行 `deploy.sh` 完成启动
@@ -123,6 +124,7 @@ npm run dev
 后端默认运行在 `http://localhost:3000`
 
 > 首次启动时自动创建数据表并初始化管理员账号：
+>
 > - **账号**：`admin`
 > - **密码**：`admin123`
 
