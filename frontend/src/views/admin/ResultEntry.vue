@@ -43,34 +43,102 @@
             <el-tag type="success">已结算</el-tag>
           </template>
           <template v-else>
-            <div class="input-area">
-              <span class="team-label">{{ match.home_team }}</span>
-              <el-input-number
-                v-model="resultForms[match.id].home"
-                :min="0"
-                :max="20"
-                size="small"
-                controls-position="right"
-                style="width:90px"
-              />
-              <span class="colon">:</span>
-              <el-input-number
-                v-model="resultForms[match.id].away"
-                :min="0"
-                :max="20"
-                size="small"
-                controls-position="right"
-                style="width:90px"
-              />
-              <span class="team-label">{{ match.away_team }}</span>
-              <el-button
-                type="primary"
-                size="small"
-                :loading="submitting[match.id]"
-                @click="handleSubmit(match)"
-              >
-                确认录入 & 自动结算
-              </el-button>
+            <div class="input-section">
+              <!-- 上半场比分 -->
+              <div class="input-block">
+                <span class="block-label">上半场：</span>
+                <div class="input-area">
+                  <span class="team-label">{{ match.home_team }}</span>
+                  <el-input-number
+                    v-model="resultForms[match.id].htHome"
+                    :min="0"
+                    :max="20"
+                    size="small"
+                    controls-position="right"
+                    style="width:90px"
+                  />
+                  <span class="colon">:</span>
+                  <el-input-number
+                    v-model="resultForms[match.id].htAway"
+                    :min="0"
+                    :max="20"
+                    size="small"
+                    controls-position="right"
+                    style="width:90px"
+                  />
+                  <span class="team-label">{{ match.away_team }}</span>
+                  <el-button
+                    size="small"
+                    type="info"
+                    :loading="htSubmitting[match.id]"
+                    :disabled="resultForms[match.id].htDone"
+                    @click="handleHtSubmit(match)"
+                  >
+                    {{ resultForms[match.id].htDone ? '✓ 上半场已录入' : '录入上半场' }}
+                  </el-button>
+                </div>
+              </div>
+              <!-- 全场比分 -->
+              <div class="input-block">
+                <span class="block-label">全场：</span>
+                <div class="input-area">
+                  <span class="team-label">{{ match.home_team }}</span>
+                  <el-input-number
+                    v-model="resultForms[match.id].home"
+                    :min="0"
+                    :max="20"
+                    size="small"
+                    controls-position="right"
+                    style="width:90px"
+                  />
+                  <span class="colon">:</span>
+                  <el-input-number
+                    v-model="resultForms[match.id].away"
+                    :min="0"
+                    :max="20"
+                    size="small"
+                    controls-position="right"
+                    style="width:90px"
+                  />
+                  <span class="team-label">{{ match.away_team }}</span>
+                  <el-button
+                    type="primary"
+                    size="small"
+                    :loading="submitting[match.id]"
+                    @click="handleSubmit(match)"
+                  >
+                    确认录入 & 自动结算
+                  </el-button>
+                </div>
+              </div>
+              <!-- 角球数（选填，用于结算角球盘口） -->
+              <div class="input-block">
+                <span class="block-label" style="color:#888">角球（选填）：</span>
+                <div class="input-area corners-area">
+                  <span class="team-label">{{ match.home_team }}</span>
+                  <el-input-number
+                    v-model="resultForms[match.id].homeCorners"
+                    :min="0"
+                    :max="30"
+                    size="small"
+                    controls-position="right"
+                    style="width:80px"
+                    placeholder="—"
+                  />
+                  <span class="colon">:</span>
+                  <el-input-number
+                    v-model="resultForms[match.id].awayCorners"
+                    :min="0"
+                    :max="30"
+                    size="small"
+                    controls-position="right"
+                    style="width:80px"
+                    placeholder="—"
+                  />
+                  <span class="team-label">{{ match.away_team }}</span>
+                  <span class="corner-tip">不填则不结算角球盘口</span>
+                </div>
+              </div>
             </div>
           </template>
         </div>
@@ -98,6 +166,7 @@ const matches = ref([])
 const loading = ref(false)
 const resultForms = reactive({})
 const submitting = reactive({})
+const htSubmitting = reactive({})
 const keyword = ref('')
 const statusFilter = ref('all')
 const currentPage = ref(1)
@@ -135,8 +204,27 @@ function formatTime(t) {
   })
 }
 
+async function handleHtSubmit(match) {
+  const { htHome, htAway } = resultForms[match.id]
+  await ElMessageBox.confirm(
+    `确认录入上半场比分 "${match.home_team} ${htHome} : ${htAway} ${match.away_team}" 吗？\n系统将结算上半场市场投注。`,
+    '确认录入上半场',
+    { type: 'warning' }
+  )
+  htSubmitting[match.id] = true
+  try {
+    await adminAPI.enterHtResult(match.id, { ht_home_score: htHome, ht_away_score: htAway })
+    resultForms[match.id].htDone = true
+    ElMessage.success('上半场比分录入成功，上半场市场投注已结算！')
+  } catch (err) {
+    ElMessage.error(err.error || '录入失败')
+  } finally {
+    htSubmitting[match.id] = false
+  }
+}
+
 async function handleSubmit(match) {
-  const { home, away } = resultForms[match.id]
+  const { home, away, homeCorners, awayCorners } = resultForms[match.id]
   await ElMessageBox.confirm(
     `确认录入 "${match.home_team} ${home} : ${away} ${match.away_team}" 吗？\n系统将自动完成结算，此操作不可撤销！`,
     '确认录入',
@@ -144,7 +232,12 @@ async function handleSubmit(match) {
   )
   submitting[match.id] = true
   try {
-    await adminAPI.enterResult(match.id, { home_score: home, away_score: away })
+    const data = { home_score: home, away_score: away }
+    if (homeCorners != null && awayCorners != null) {
+      data.home_corners = homeCorners
+      data.away_corners = awayCorners
+    }
+    await adminAPI.enterResult(match.id, data)
     ElMessage.success('比分录入成功，已完成自动结算！')
     await loadMatches()
   } catch (err) {
@@ -160,11 +253,11 @@ async function loadMatches() {
     const all = await adminAPI.getMatches()
     matches.value = all.filter(m => m.status !== 'finished')
     currentPage.value = 1
-    // 初始化表单
     matches.value.forEach(m => {
       if (!resultForms[m.id]) {
-        resultForms[m.id] = { home: 0, away: 0 }
+        resultForms[m.id] = { home: 0, away: 0, htHome: 0, htAway: 0, htDone: false, homeCorners: null, awayCorners: null }
         submitting[m.id] = false
+        htSubmitting[m.id] = false
       }
     })
   } catch {
@@ -199,7 +292,7 @@ onMounted(loadMatches)
 
 .match-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 20px;
   border-bottom: 1px solid #f0f0f0;
@@ -207,7 +300,7 @@ onMounted(loadMatches)
 }
 .match-item:last-child { border-bottom: none; }
 
-.match-info { min-width: 240px; }
+.match-info { min-width: 200px; }
 .teams {
   font-size: 16px;
   display: flex;
@@ -230,15 +323,35 @@ onMounted(loadMatches)
 }
 .score { font-size: 20px; font-weight: 700; color: #c00; }
 
+.input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.input-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.block-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  min-width: 56px;
+}
+
 .input-area {
   display: flex;
   align-items: center;
   gap: 10px;
   background: #f9f9f9;
-  padding: 12px 20px;
+  padding: 10px 16px;
   border-radius: 10px;
   border: 1px dashed #ddd;
 }
 .team-label { font-size: 14px; font-weight: 600; color: #333; }
 .colon { font-size: 20px; font-weight: 900; color: #333; }
+.corners-area { background: #f5f5f5; border-color: #e0e0e0; }
+.corner-tip { font-size: 12px; color: #aaa; white-space: nowrap; }
 </style>

@@ -38,8 +38,11 @@
             <template #default="{ row }">{{ row.nickname }}（{{ row.username }}）</template>
           </el-table-column>
           <el-table-column label="订单号" min-width="190" prop="order_no" />
-          <el-table-column label="比分" width="90">
-            <template #default="{ row }">{{ row.home_score }}-{{ row.away_score }}</template>
+          <el-table-column label="投注项" min-width="120">
+            <template #default="{ row }">
+              <span v-if="row.bet_type === 'market' || row.market_label">{{ row.market_label }}</span>
+              <span v-else>{{ row.home_score }}-{{ row.away_score }}</span>
+            </template>
           </el-table-column>
           <el-table-column label="赔率" width="90">
             <template #default="{ row }">@{{ formatOdds(row.odds_value) }}</template>
@@ -117,12 +120,14 @@ const keywordFilteredItems = computed(() => {
   for (const item of reportItems.value) {
     const matchText = `${item.match.home_team} ${item.match.away_team}`.toLowerCase()
     const details = (item.details || []).filter(d => {
+      const itemLabel = (d.bet_type === 'market' || d.market_label)
+        ? (d.market_label || '')
+        : `${d.home_score}-${d.away_score}`
       const rowText = [
         d.username,
         d.nickname,
         d.order_no,
-        `${d.home_score}-${d.away_score}`,
-        `${d.home_score}:${d.away_score}`,
+        itemLabel,
         d.status,
         String(d.amount),
         String(d.odds_value),
@@ -133,24 +138,35 @@ const keywordFilteredItems = computed(() => {
 
     if (details.length === 0 && !matchText.includes(keyword)) continue
 
-    // 基于筛选后的明细重新聚合行文案，确保复制文本与核对列表一致
+    // 基于筛选后的明细重新聚合行文案
     const lineMap = new Map()
     for (const d of details) {
-      const key = `${d.home_score}-${d.away_score}-${d.odds_value}`
+      const isMarket = d.bet_type === 'market' || d.market_label
+      const key = isMarket
+        ? `market-${d.market_label}-${d.odds_value}`
+        : `score-${d.home_score}-${d.away_score}-${d.odds_value}`
       if (!lineMap.has(key)) {
         lineMap.set(key, {
+          bet_type: d.bet_type,
           home_score: d.home_score,
           away_score: d.away_score,
+          market_label: d.market_label,
           odds_value: d.odds_value,
           amount: 0
         })
       }
-      const line = lineMap.get(key)
-      line.amount += Number(d.amount)
+      lineMap.get(key).amount += Number(d.amount)
     }
 
     const lines = [...lineMap.values()]
-      .sort((a, b) => (a.home_score - b.home_score) || (a.away_score - b.away_score))
+      .sort((a, b) => {
+        // 比分在前，市场盘口在后
+        const aIsScore = a.bet_type !== 'market' && !a.market_label
+        const bIsScore = b.bet_type !== 'market' && !b.market_label
+        if (aIsScore !== bIsScore) return aIsScore ? -1 : 1
+        if (aIsScore) return (a.home_score - b.home_score) || (a.away_score - b.away_score)
+        return (a.market_label || '').localeCompare(b.market_label || '')
+      })
       .map(l => ({ ...l, amount: Number(l.amount.toFixed(2)) }))
 
     const totalAmount = lines.reduce((sum, l) => sum + Number(l.amount), 0)
@@ -207,9 +223,13 @@ const reportText = computed(() => {
 
   return reportItems.value.map(item => {
     const title = `${item.match.home_team} VS${item.match.away_team}`
-    const lines = item.lines.map(line =>
-      `全场比分，${line.home_score}-${line.away_score} 赔率@${formatOdds(line.odds_value)}，入 ${formatAmount(line.amount)}`
-    )
+    const lines = item.lines.map(line => {
+      const isMarket = line.bet_type === 'market' || line.market_label
+      const label = isMarket
+        ? line.market_label
+        : `全场比分，${line.home_score}-${line.away_score}`
+      return `${label} 赔率@${formatOdds(line.odds_value)}，入 ${formatAmount(line.amount)}`
+    })
     const total = `合计 ${formatAmount(item.total_amount)}`
     return [title, ...lines, '', total].join('\n')
   }).join('\n\n')

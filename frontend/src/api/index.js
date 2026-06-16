@@ -55,6 +55,14 @@ export const adminAPI = {
 
   // 比分录入
   enterResult: (matchId, data) => api.put(`/admin/matches/${matchId}/result`, data),
+  enterHtResult: (matchId, data) => api.put(`/admin/matches/${matchId}/ht-result`, data),
+
+  // 市场赔率
+  getMarketOdds: matchId => api.get(`/admin/market-odds/${matchId}`),
+  generateMarketOdds: (matchId, params = {}) => api.post(`/admin/market-odds/${matchId}/generate`, params),
+  updateMarketOdds: (matchId, odds) => api.put(`/admin/market-odds/${matchId}`, { odds }),
+  addMarketOddItem: (matchId, data) => api.post(`/admin/market-odds/${matchId}/items`, data),
+  deleteMarketOdd: id => api.delete(`/admin/market-odds/item/${id}`),
 
   // 报表
   getReportList: () => api.get('/admin/reports'),

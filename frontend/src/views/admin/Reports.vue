@@ -125,9 +125,10 @@
                   <span class="order-no">{{ row.order_no }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="比分（主:客）" width="120">
+              <el-table-column label="投注项" width="180">
                 <template #default="{ row }">
-                  <span class="score">{{ row.home_score }} : {{ row.away_score }}</span>
+                  <el-tag v-if="row.bet_type === 'market' || row.market_label" size="small" type="warning" style="margin-right:4px">盘口</el-tag>
+                  <span class="score">{{ (row.bet_type === 'market' || row.market_label) ? row.market_label : (row.home_score + ' : ' + row.away_score) }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="赔率" width="80">
@@ -252,12 +253,14 @@ const filteredDetailRows = computed(() => {
   if (!keyword) return detailRows.value
 
   return detailRows.value.filter(row => {
+    const itemLabel = (row.bet_type === 'market' || row.market_label)
+      ? (row.market_label || '')
+      : `${row.home_score}-${row.away_score}`
     const text = [
       row.username,
       row.nickname,
       row.order_no,
-      `${row.home_score}-${row.away_score}`,
-      `${row.home_score}:${row.away_score}`,
+      itemLabel,
       String(row.amount),
       String(row.odds_value)
     ].join(' ').toLowerCase()

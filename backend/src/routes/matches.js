@@ -92,7 +92,12 @@ router.get('/:id', async (req, res) => {
       [req.params.id]
     );
 
-    res.json({ ...match.rows[0], odds: odds.rows });
+    const marketOdds = await pool.query(
+      'SELECT * FROM market_odds WHERE match_id = $1 ORDER BY market_type ASC, id ASC',
+      [req.params.id]
+    );
+
+    res.json({ ...match.rows[0], odds: odds.rows, market_odds: marketOdds.rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '获取赛事详情失败' });

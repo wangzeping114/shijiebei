@@ -14,7 +14,7 @@
       </div>
       <div class="slip-field">
         <span class="label">玩　法：</span>
-        <span class="value">全场固定比分</span>
+        <span class="value">{{ betTypes }}</span>
       </div>
       <div class="slip-field">
         <span class="label">开赛时间：</span>
@@ -24,14 +24,17 @@
       <div class="slip-divider">━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
 
       <div class="items-header">
-        <span class="ic-score">比分（主:客）</span>
+        <span class="ic-label">投注项</span>
         <span class="ic-odds">赔率</span>
         <span class="ic-amount">投注金额</span>
       </div>
       <div class="slip-divider thin">- - - - - - - - - - - - - - - - - - - - - -</div>
 
       <div v-for="item in order?.items" :key="item.id" class="bet-item">
-        <span class="ic-score">{{ item.home_score }} : {{ item.away_score }}</span>
+        <span class="ic-label">
+          <template v-if="item.bet_type === 'market' || item.market_label">{{ item.market_label }}</template>
+          <template v-else>{{ item.home_score }} : {{ item.away_score }}</template>
+        </span>
         <span class="ic-odds">× {{ Number(item.odds_value).toFixed(2) }}</span>
         <span class="ic-amount">¥{{ Number(item.amount).toFixed(2) }}</span>
       </div>
@@ -59,9 +62,20 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   order: Object,
   match: Object
+})
+
+const betTypes = computed(() => {
+  if (!props.order?.items) return '—'
+  const hasScore = props.order.items.some(i => i.bet_type !== 'market' && !i.market_label)
+  const hasMarket = props.order.items.some(i => i.bet_type === 'market' || i.market_label)
+  if (hasScore && hasMarket) return '比分 + 市场盘口'
+  if (hasMarket) return '市场盘口'
+  return '全场固定比分'
 })
 
 function formatTime(t) {
@@ -145,7 +159,7 @@ function formatDateTime(t) {
   margin: 2px 0;
   font-weight: 600;
 }
-.ic-score { font-size: 15px; color: #1a4a1a; }
+.ic-label { font-size: 14px; color: #1a4a1a; word-break: break-all; }
 .ic-odds { color: #c47900; }
 .ic-amount { color: #333; text-align: right; }
 
@@ -174,9 +188,8 @@ function formatDateTime(t) {
     grid-template-columns: 1fr 78px 88px;
     gap: 6px;
   }
-  .ic-score {
-    font-size: 14px;
-    white-space: nowrap;
+  .ic-label {
+    font-size: 13px;
   }
 }
 </style>

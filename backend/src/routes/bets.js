@@ -62,14 +62,15 @@ router.get('/my', authenticate, async (req, res) => {
 
 // 提交投注
 router.post('/', authenticate, async (req, res) => {
-  const { match_id, items } = req.body;
+  const { match_id, items, market_items } = req.body;
 
-  if (!match_id || !items || items.length === 0) {
-    return res.status(400).json({ error: '请选择赛事和至少一个投注比分' });
+  const allItems = [...(items || []), ...(market_items || [])];
+  if (!match_id || allItems.length === 0) {
+    return res.status(400).json({ error: '请选择赛事和至少一个投注项' });
   }
 
   // 校验金额
-  for (const item of items) {
+  for (const item of allItems) {
     if (Number(item.amount) <= 0) {
       return res.status(400).json({ error: '投注金额必须大于0' });
     }
@@ -87,7 +88,7 @@ router.post('/', authenticate, async (req, res) => {
     }
 
     // 计算总金额
-    const totalAmount = items.reduce((sum, item) => sum + Number(item.amount), 0);
+    const totalAmount = allItems.reduce((sum, item) => sum + Number(item.amount), 0);
 
     // 生成订单号
     const orderNo = 'BET' + Date.now() + Math.floor(Math.random() * 900 + 100);
@@ -99,9 +100,10 @@ router.post('/', authenticate, async (req, res) => {
     );
     const order = orderResult.rows[0];
 
-    // 创建投注明细（以数据库最新赔率为准）
     const savedItems = [];
-    for (const item of items) {
+
+    // 比分投注明细
+    for (const item of (items || [])) {
       const oddsResult = await client.query(
         'SELECT * FROM odds WHERE match_id = $1 AND home_score = $2 AND away_score = $3',
         [match_id, item.home_score, item.away_score]
@@ -113,10 +115,31 @@ router.post('/', authenticate, async (req, res) => {
       if (Number(currentOdds) <= 0) {
         throw new Error(`比分 ${item.home_score}:${item.away_score} 赔率未配置，暂不可投注`);
       }
-
       const itemResult = await client.query(
-        'INSERT INTO bet_items (order_id, home_score, away_score, odds_value, amount) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        `INSERT INTO bet_items (order_id, home_score, away_score, odds_value, amount, bet_type)
+         VALUES ($1, $2, $3, $4, $5, 'score') RETURNING *`,
         [order.id, item.home_score, item.away_score, currentOdds, item.amount]
+      );
+      savedItems.push(itemResult.rows[0]);
+    }
+
+    // 市场盘口投注明细
+    for (const item of (market_items || [])) {
+      const moResult = await client.query(
+        'SELECT * FROM market_odds WHERE id = $1 AND match_id = $2',
+        [item.market_odds_id, match_id]
+      );
+      if (moResult.rows.length === 0) {
+        throw new Error(`盘口选项不存在`);
+      }
+      const mo = moResult.rows[0];
+      if (Number(mo.odds_value) <= 0) {
+        throw new Error(`"${mo.selection}" 赔率未配置，暂不可投注`);
+      }
+      const itemResult = await client.query(
+        `INSERT INTO bet_items (order_id, market_odds_id, market_label, odds_value, amount, bet_type)
+         VALUES ($1, $2, $3, $4, $5, 'market') RETURNING *`,
+        [order.id, mo.id, mo.selection, mo.odds_value, item.amount]
       );
       savedItems.push(itemResult.rows[0]);
     }

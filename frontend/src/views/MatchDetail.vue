@@ -95,6 +95,52 @@
           暂无赔率配置，请联系管理员
         </div>
 
+        <!-- 市场盘口 -->
+        <template v-if="match.market_odds && match.market_odds.length > 0">
+          <div class="section-header" style="margin-top:24px">
+            <h3>🎲 市场盘口投注</h3>
+            <span class="hint">独赢/让球/大小盘口；赔率为0表示未开盘</span>
+          </div>
+          <template v-for="(group, mType) in marketOddsGrouped" :key="mType">
+            <div class="market-type-header">{{ mType }}</div>
+            <div class="odds-table">
+              <div class="odds-header">
+                <span class="col-score">选项</span>
+                <span class="col-odds">赔率</span>
+                <span class="col-amount">投注金额（元）</span>
+                <span class="col-payout">预计赔付</span>
+              </div>
+              <div
+                v-for="mo in group"
+                :key="`mo-${mo.id}`"
+                class="odds-row"
+                :class="{ selected: marketAmounts[mo.id] > 0, disabled: Number(mo.odds_value) <= 0 }"
+              >
+                <span class="col-score score-label">{{ mo.selection }}</span>
+                <span class="col-odds odds-value">× {{ mo.odds_value }}</span>
+                <span class="col-amount">
+                  <el-input-number
+                    v-model="marketAmounts[mo.id]"
+                    :min="0"
+                    :step="10"
+                    :precision="0"
+                    size="small"
+                    controls-position="right"
+                    placeholder="0"
+                    :disabled="isBetLocked || Number(mo.odds_value) <= 0"
+                  />
+                </span>
+                <span class="col-payout">
+                  <template v-if="marketAmounts[mo.id] > 0">
+                    ¥{{ (marketAmounts[mo.id] * mo.odds_value).toFixed(2) }}
+                  </template>
+                  <span v-else class="empty-payout">—</span>
+                </span>
+              </div>
+            </div>
+          </template>
+        </template>
+
         <div v-if="selectedItems.length > 0" class="selected-panel">
           <div class="selected-title">🧾 已选投注比分（支持修改/删除）</div>
           <div class="selected-list">
@@ -116,9 +162,9 @@
         </div>
 
         <!-- 汇总 & 提交 -->
-        <div class="bet-summary" v-if="selectedItems.length > 0">
+        <div class="bet-summary" v-if="selectedItems.length > 0 || selectedMarketItems.length > 0">
           <div class="summary-info">
-            <span>已选 <strong>{{ selectedItems.length }}</strong> 个比分</span>
+            <span>已选 <strong>{{ selectedItems.length + selectedMarketItems.length }}</strong> 个投注项</span>
             <span>总投注额：<strong class="total-amount">¥{{ totalAmount.toFixed(2) }}</strong></span>
           </div>
           <el-button
@@ -212,6 +258,7 @@ const submitting = ref(false)
 const showSlip = ref(false)
 const lastOrder = ref(null)
 const betAmounts = reactive({})
+const marketAmounts = reactive({})
 const editDialogVisible = ref(false)
 const editingOddId = ref(null)
 const editForm = reactive({ targetOddId: null, amount: 10 })
@@ -219,6 +266,19 @@ const editForm = reactive({ targetOddId: null, amount: 10 })
 const selectedItems = computed(() =>
   match.value?.odds.filter(o => betAmounts[o.id] > 0) || []
 )
+
+const selectedMarketItems = computed(() =>
+  (match.value?.market_odds || []).filter(o => marketAmounts[o.id] > 0)
+)
+
+const marketOddsGrouped = computed(() => {
+  const groups = {}
+  for (const mo of (match.value?.market_odds || [])) {
+    if (!groups[mo.market_type]) groups[mo.market_type] = []
+    groups[mo.market_type].push(mo)
+  }
+  return groups
+})
 
 const isBetLocked = computed(() =>
   ['closed', 'finished'].includes(match.value?.status)
@@ -229,7 +289,8 @@ const lockReason = computed(() =>
 )
 
 const totalAmount = computed(() =>
-  selectedItems.value.reduce((sum, o) => sum + (betAmounts[o.id] || 0), 0)
+  selectedItems.value.reduce((sum, o) => sum + (betAmounts[o.id] || 0), 0) +
+  selectedMarketItems.value.reduce((sum, o) => sum + (marketAmounts[o.id] || 0), 0)
 )
 
 function statusLabel(status) {
@@ -251,8 +312,8 @@ async function handleSubmit() {
     ElMessage.warning('当前赛事不可投注')
     return
   }
-  if (selectedItems.value.length === 0) {
-    ElMessage.warning('请至少选择一个比分并填写金额')
+  if (selectedItems.value.length === 0 && selectedMarketItems.value.length === 0) {
+    ElMessage.warning('请至少选择一个投注项并填写金额')
     return
   }
   submitting.value = true
@@ -263,11 +324,15 @@ async function handleSubmit() {
       odds_value: o.odds_value,
       amount: Math.round(betAmounts[o.id])
     }))
-    const result = await betAPI.placeBet({ match_id: match.value.id, items })
+    const market_items = selectedMarketItems.value.map(o => ({
+      market_odds_id: o.id,
+      amount: Math.round(marketAmounts[o.id])
+    }))
+    const result = await betAPI.placeBet({ match_id: match.value.id, items, market_items })
     lastOrder.value = result.order
     showSlip.value = true
-    // 清空金额
     Object.keys(betAmounts).forEach(k => { betAmounts[k] = 0 })
+    Object.keys(marketAmounts).forEach(k => { marketAmounts[k] = 0 })
     ElMessage.success('投注成功！')
   } catch (err) {
     ElMessage.error(err.error || '投注失败')
@@ -351,6 +416,7 @@ onMounted(async () => {
     const data = await matchAPI.getById(route.params.id)
     match.value = data
     data.odds.forEach(o => { betAmounts[o.id] = 0 })
+    ;(data.market_odds || []).forEach(o => { marketAmounts[o.id] = 0 })
   } catch {
     ElMessage.error('获取赛事详情失败')
     router.push('/')
@@ -700,6 +766,16 @@ onMounted(async () => {
   border: none;
 }
 .loading-wrap { max-width: 900px; margin: 40px auto; padding: 40px; background: #fff; border-radius: 12px; }
+
+.market-type-header {
+  background: #f0f5f0;
+  padding: 6px 14px;
+  font-weight: 700;
+  color: #2d7d2d;
+  border-radius: 6px;
+  margin: 14px 0 6px;
+  font-size: 13px;
+}
 
 @media print {
   .header, .match-banner, .bet-section { display: none; }

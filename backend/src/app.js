@@ -211,17 +211,39 @@ async function initDatabase() {
       CREATE TABLE IF NOT EXISTS bet_items (
         id SERIAL PRIMARY KEY,
         order_id INTEGER REFERENCES bet_orders(id) ON DELETE CASCADE,
-        home_score INTEGER NOT NULL,
-        away_score INTEGER NOT NULL,
+        home_score INTEGER,
+        away_score INTEGER,
         odds_value DECIMAL(10, 2) NOT NULL,
         amount DECIMAL(10, 2) NOT NULL,
         is_winner BOOLEAN DEFAULT FALSE
+      );
+
+      CREATE TABLE IF NOT EXISTS market_odds (
+        id SERIAL PRIMARY KEY,
+        match_id INTEGER REFERENCES matches(id) ON DELETE CASCADE,
+        market_type VARCHAR(50) NOT NULL,
+        selection VARCHAR(100) NOT NULL,
+        selection_code VARCHAR(80) NOT NULL,
+        odds_value DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+        UNIQUE(match_id, market_type, selection)
       );
     `);
 
     // 兼容旧表：添加 round / venue 字段
     await client.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS round VARCHAR(30)`);
     await client.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS venue VARCHAR(100)`);
+    // 兼容旧表：添加上半场比分字段
+    await client.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS ht_home_score INTEGER`);
+    await client.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS ht_away_score INTEGER`);
+    // 兼容旧表：角球数字段
+    await client.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_corners INTEGER`);
+    await client.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_corners INTEGER`);
+    // 兼容旧表：bet_items 支持市场投注
+    await client.query(`ALTER TABLE bet_items ADD COLUMN IF NOT EXISTS bet_type VARCHAR(20) DEFAULT 'score'`);
+    await client.query(`ALTER TABLE bet_items ADD COLUMN IF NOT EXISTS market_odds_id INTEGER REFERENCES market_odds(id) ON DELETE SET NULL`);
+    await client.query(`ALTER TABLE bet_items ADD COLUMN IF NOT EXISTS market_label VARCHAR(100)`);
+    await client.query(`ALTER TABLE bet_items ALTER COLUMN home_score DROP NOT NULL`);
+    await client.query(`ALTER TABLE bet_items ALTER COLUMN away_score DROP NOT NULL`);
 
     // Ensure default admin account exists and can be used directly in fresh/local setups
     const defaultAdminUsername = 'admin';

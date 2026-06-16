@@ -60,7 +60,12 @@
               class="item-row"
               :class="{ winner: item.is_winner }"
             >
-              <span class="score">{{ item.home_score }} : {{ item.away_score }}</span>
+              <span class="score">
+                <template v-if="item.bet_type === 'market' || item.market_label">
+                  <el-tag size="small" type="warning" style="margin-right:4px">盘口</el-tag>{{ item.market_label }}
+                </template>
+                <template v-else>{{ item.home_score }} : {{ item.away_score }}</template>
+              </span>
               <span>× {{ Number(item.odds_value).toFixed(2) }}</span>
               <span>¥{{ Number(item.amount).toFixed(2) }}</span>
               <span>
@@ -70,6 +75,7 @@
               </span>
               <span class="item-actions">
                 <el-button
+                  v-if="item.bet_type !== 'market' && !item.market_label"
                   size="small"
                   :disabled="!canOperateOrder(order)"
                   @click="openEditDialog(order, item)"
