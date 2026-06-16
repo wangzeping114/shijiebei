@@ -263,7 +263,7 @@ async function handleSubmit() {
       home_score: o.home_score,
       away_score: o.away_score,
       odds_value: o.odds_value,
-      amount: betAmounts[o.id]
+      amount: Math.round(betAmounts[o.id])
     }))
     const result = await betAPI.placeBet({ match_id: match.value.id, items })
     lastOrder.value = result.order
@@ -335,7 +335,7 @@ function saveEditSelected() {
   const targetAlreadyHasAmount = targetId !== sourceId && Number(betAmounts[targetId] || 0) > 0
 
   betAmounts[sourceId] = 0
-  betAmounts[targetId] = Number(editForm.amount)
+  betAmounts[targetId] = Math.round(Number(editForm.amount))
 
   editDialogVisible.value = false
   editingOddId.value = null
