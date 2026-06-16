@@ -241,11 +241,9 @@ function statusTagType(status) {
   return map[status] || ''
 }
 function formatTime(t) {
-  return new Date(t).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-    timeZone: 'Asia/Shanghai'
-  })
+  if (!t) return ''
+  const s = String(t).replace('T', ' ').replace(/\.\d+.*$/, '')
+  return s.slice(0, 16).replace(/-/g, '/')
 }
 
 async function handleSubmit() {

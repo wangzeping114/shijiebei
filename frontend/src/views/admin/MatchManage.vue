@@ -163,19 +163,17 @@ function statusTagType(s) {
   return { upcoming: 'primary', ongoing: 'warning', finished: 'info', closed: 'danger' }[s] || ''
 }
 function formatTime(t) {
-  return new Date(t).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-    timeZone: 'Asia/Shanghai'
-  })
+  if (!t) return ''
+  const s = String(t).replace('T', ' ').replace(/\.\d+.*$/, '')
+  return s.slice(0, 16).replace(/-/g, '/')
 }
 
 function beijingDateKey(dateLike) {
+  const s = String(dateLike)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
+    year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date(dateLike))
 }
 

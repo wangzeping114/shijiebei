@@ -92,13 +92,15 @@ const matches = ref([])
 const loading = ref(false)
 let refreshTimer = null
 
-function beijingDateKey(date) {
+function beijingDateKey(dateLike) {
+  const s = String(dateLike)
+  // 已存储的时间字符串直接截取日期部分
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  // 当前时间 Date 对象仍用 Intl 获取北京日期
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date(date))
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date(dateLike))
 }
 
 const todayKey = computed(() => beijingDateKey(new Date()))
@@ -141,11 +143,9 @@ function statusTagType(status) {
 }
 
 function formatTime(t) {
-  return new Date(t).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-    timeZone: 'Asia/Shanghai'
-  })
+  if (!t) return ''
+  const s = String(t).replace('T', ' ').replace(/\.\d+.*$/, '')
+  return s.slice(0, 16).replace(/-/g, '/')
 }
 
 function goToMatch(match) {

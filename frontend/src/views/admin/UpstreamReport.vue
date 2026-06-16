@@ -198,10 +198,8 @@ function formatOdds(v) {
 
 function formatDateTime(t) {
   if (!t) return ''
-  return new Date(t).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  })
+  const s = String(t).replace('T', ' ').replace(/\.\d+.*$/, '')
+  return s.slice(0, 16).replace(/-/g, '/')
 }
 
 const reportText = computed(() => {

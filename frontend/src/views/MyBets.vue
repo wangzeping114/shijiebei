@@ -166,14 +166,15 @@ function orderTagType(status) {
 }
 function formatDateTime(t) {
   if (!t) return ''
-  return new Date(t).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
-  })
+  const s = String(t).replace('T', ' ').replace(/\.\d+.*$/, '')
+  return s.slice(0, 19).replace(/-/g, '/')
 }
 
 function hasStarted(order) {
-  return nowMs.value >= new Date(order.match_time).getTime()
+  if (!order.match_time) return false
+  // 存储的是北京时间字符串，补 +08:00 后与当前 UTC 时间比较
+  const s = String(order.match_time).replace(' ', 'T').replace(/\.\d+.*$/, '')
+  return nowMs.value >= new Date(s + '+08:00').getTime()
 }
 
 function canOperateOrder(order) {
