@@ -27,6 +27,19 @@
           ⚡ 一键生成默认赔率(0)
         </el-button>
         <el-button type="success" @click="openAddDialog">+ 手动新增</el-button>
+        <el-button type="info" @click="handleDownloadTemplate">📥 下载Excel模板</el-button>
+        <el-upload
+          ref="excelUploadRef"
+          :auto-upload="false"
+          :show-file-list="false"
+          accept=".xlsx,.xls"
+          :on-change="handleExcelImport"
+          style="display:inline-block"
+        >
+          <el-button type="success">
+            📤 导入Excel赔率
+          </el-button>
+        </el-upload>
         <el-button type="warning" :loading="saving" @click="handleBatchSave">
           💾 保存全部修改
         </el-button>
@@ -99,6 +112,17 @@
         <el-button type="primary" @click="openGenerateDialog">
           ⚡ 生成默认市场赔率
         </el-button>
+        <el-button type="info" @click="handleDownloadMarketTemplate">📥 下载市场赔率模板</el-button>
+        <el-upload
+          ref="marketExcelUploadRef"
+          :auto-upload="false"
+          :show-file-list="false"
+          accept=".xlsx,.xls"
+          :on-change="handleMarketExcelImport"
+          style="display:inline-block"
+        >
+          <el-button type="success">📤 导入市场赔率</el-button>
+        </el-upload>
         <el-button type="warning" :loading="mSaving" @click="handleMarketSave">
           💾 保存市场赔率
         </el-button>
@@ -266,6 +290,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminAPI, matchAPI } from '../../api'
+import * as XLSX from 'xlsx'
 
 const route = useRoute()
 const router = useRouter()
@@ -299,6 +324,7 @@ const oddsState = ref('all')
 const currentPage = ref(1)
 const pageSize = ref(20)
 
+const excelUploadRef = ref()
 const addForm = ref({ home_score: 0, away_score: 0, odds_value: 0.00 })
 const addRules = {
   odds_value: [{ required: true, message: '请填写赔率', trigger: 'blur' }]
@@ -320,8 +346,8 @@ function isCornersType(mType) { return mType.includes('角球') }
 // 解析让球/角球行的数值，写入 _val 供编辑
 function prepareMarketRow(row) {
   const r = { ...row }
-  const hm = row.selection_code.match(/^(?:ht_)?handicap_(?:home|away)_(-?\d+\.?\d*)$/)
-  const cm = row.selection_code.match(/^corners_over_(-?\d+\.?\d*)$/)
+  const hm = row.selection_code.match(/^(?:ht_)?handicap_(?:home|away)_(\d+\.?\d*)$/)
+  const cm = row.selection_code.match(/^corners_over_(\d+\.?\d*)$/)
   if (hm) r._val = parseFloat(hm[1])
   else if (cm) r._val = parseFloat(cm[1])
   return r
@@ -451,7 +477,7 @@ async function handleMarketSave() {
   try {
     // 把 _val 回写进 selection_code
     const toSave = marketOdds.value.map(row => {
-      const r = { id: row.id, odds_value: row.odds_value, selection: row.selection, selection_code: row.selection_code }
+      const r = { id: row.id, market_type: row.market_type, odds_value: row.odds_value, selection: row.selection, selection_code: row.selection_code }
       if (row._val !== undefined) {
         const hm = row.selection_code.match(/^((?:ht_)?handicap_(?:home|away)_)/)
         if (hm) r.selection_code = `${hm[1]}${row._val}`
@@ -502,6 +528,272 @@ async function handleDeleteMarketOdd(id) {
   } catch (err) {
     ElMessage.error(err.error || '删除失败')
   }
+}
+
+// 格式化比赛时间
+function formatMatchTime(matchTime) {
+  if (!matchTime) return ''
+  const d = new Date(matchTime)
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+// 生成比赛信息行（前两行）
+function getMatchInfoRows() {
+  const m = match.value
+  if (!m) return []
+  return [
+    [`比赛：${m.home_team} VS ${m.away_team}`, '', `日期：${formatMatchTime(m.match_time)}`],
+    []
+  ]
+}
+
+// 下载比分赔率Excel模板
+function handleDownloadTemplate() {
+  const infoRows = getMatchInfoRows()
+  const header = [['主队比分', '客队比分', '赔率']]
+  const examples = [
+    [1, 0, 3.50],
+    [2, 0, 6.00],
+    [0, 0, 5.50],
+    [1, 1, 4.20],
+    [2, 1, 7.50],
+  ]
+  const wsData = [...infoRows, ...header, ...examples]
+  const ws = XLSX.utils.aoa_to_sheet(wsData)
+  ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 14 }]
+  if (infoRows.length > 0) ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '比分赔率')
+  const filename = match.value ? `${match.value.home_team}VS${match.value.away_team}_比分赔率模板.xlsx` : '比分赔率模板.xlsx'
+  XLSX.writeFile(wb, filename)
+}
+
+// 下载市场赔率Excel模板（含当前已有数据）
+function handleDownloadMarketTemplate() {
+  const infoRows = getMatchInfoRows()
+  const header = [['盘口类型', '选项名称', '选项代码（勿修改）', '赔率']]
+  let dataRows
+  if (marketOdds.value.length > 0) {
+    dataRows = marketOdds.value.map(o => [
+      o.market_type,
+      o.selection,
+      o.selection_code,
+      Number(o.odds_value)
+    ])
+  } else {
+    const m = match.value
+    const home = m ? m.home_team : '主队'
+    const away = m ? m.away_team : '客队'
+    dataRows = [
+      // 独赢盘口
+      ['独赢盘口', `${home}独赢`,                   'home_win',               0.00],
+      ['独赢盘口', '平局',                           'draw',                   0.00],
+      ['独赢盘口', `${away}独赢`,                    'away_win',               0.00],
+      // 上半场独赢盘口
+      ['上半场独赢盘口', `上半场${home}独赢`,        'ht_home_win',            0.00],
+      ['上半场独赢盘口', '上半场平局',               'ht_draw',                0.00],
+      ['上半场独赢盘口', `上半场${away}独赢`,        'ht_away_win',            0.00],
+      // 全场让球盘口（两条线，让球值由生成参数决定，示例用1.75/2）
+      ['全场让球盘口', `${home}让1.75球`,          'handicap_home_1.75',     0.00],
+      ['全场让球盘口', `${away}让1.75球`,           'handicap_away_1.75',     0.00],
+      ['全场让球盘口', `${home}让2球`,              'handicap_home_2',        0.00],
+      ['全场让球盘口', `${away}让2球`,              'handicap_away_2',        0.00],
+      // 上半场让球盘口
+      ['上半场让球盘口', `上半场${home}让0.75球`,   'ht_handicap_home_0.75',  0.00],
+      ['上半场让球盘口', `上半场${away}让0.75球`,   'ht_handicap_away_0.75',  0.00],
+      // 全场比分大小盘口（两条线）
+      ['全场比分大小盘口', '全场比分大于3',           'total_over_3',           0.00],
+      ['全场比分大小盘口', '全场比分小于3',           'total_under_3',          0.00],
+      ['全场比分大小盘口', '全场比分大于2.5',         'total_over_2.5',         0.00],
+      ['全场比分大小盘口', '全场比分小于2.5',         'total_under_2.5',        0.00],
+      // 上半场比分大小盘口
+      ['上半场比分大小盘口', '上半场比分大于1',       'ht_total_over_1',        0.00],
+      ['上半场比分大小盘口', '上半场比分小于1',       'ht_total_under_1',       0.00],
+      // 双方是否进球
+      ['双方是否进球', '双方均进球（是）',            'btts_yes',               0.00],
+      ['双方是否进球', '双方未均进球（否）',          'btts_no',                0.00],
+      // 全场角球盘口
+      ['全场角球盘口', '全场角球大于9.5',             'corners_over_9.5',       0.00],
+    ]
+  }
+  const wsData = [...infoRows, ...header, ...dataRows]
+  const ws = XLSX.utils.aoa_to_sheet(wsData)
+  // 强制文本列（盘口类型/选项名称/选项代码）为字符串类型，防止 Excel 把含负号的代码误识别为公式
+  const mRange = XLSX.utils.decode_range(ws['!ref'] || 'A1:D1')
+  for (let r = mRange.s.r; r <= mRange.e.r; r++) {
+    for (const c of [0, 1, 2]) {
+      const addr = XLSX.utils.encode_cell({ r, c })
+      if (ws[addr] != null) ws[addr] = { t: 's', v: String(ws[addr].v ?? '') }
+    }
+  }
+  ws['!cols'] = [{ wch: 22 }, { wch: 28 }, { wch: 28 }, { wch: 12 }]
+  if (infoRows.length > 0) ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }]
+
+  // 说明 Sheet：解释选项代码格式
+  const helpData = [
+    ['选项代码说明（导入时系统按此列精确匹配，请勿修改）'],
+    [],
+    ['盘口类型', '选项代码格式', '说明'],
+    ['独赢盘口',       'home_win',                  '主队独赢'],
+    ['独赢盘口',       'draw',                       '平局'],
+    ['独赢盘口',       'away_win',                   '客队独赢'],
+    ['上半场独赢盘口', 'ht_home_win',                '上半场主队独赢'],
+    ['上半场独赢盘口', 'ht_draw',                    '上半场平局'],
+    ['上半场独赢盘口', 'ht_away_win',                '上半场客队独赢'],
+    ['全场让球盘口',   'handicap_home_{让球值}',     '主队让球，示例：handicap_home_1.75（主队让1.75球）'],
+    ['全场让球盘口',   'handicap_away_{让球值}',     '客队让球，示例：handicap_away_1.75（客队让1.75球）'],
+    ['上半场让球盘口', 'ht_handicap_home_{让球值}',  '示例：ht_handicap_home_0.75（上半场主队让0.75球）'],
+    ['上半场让球盘口', 'ht_handicap_away_{让球值}',  '示例：ht_handicap_away_0.75（上半场客队让0.75球）'],
+    ['全场比分大小盘口','total_over_{球线}',          '示例：total_over_3（全场大于3球）'],
+    ['全场比分大小盘口','total_under_{球线}',         '示例：total_under_3（全场小于3球）'],
+    ['上半场比分大小盘口','ht_total_over_{球线}',     '示例：ht_total_over_1'],
+    ['上半场比分大小盘口','ht_total_under_{球线}',    '示例：ht_total_under_1'],
+    ['双方是否进球',   'btts_yes',                   '双方均进球（是）'],
+    ['双方是否进球',   'btts_no',                    '双方未均进球（否）'],
+    ['全场角球盘口',   'corners_over_{角球数}',      '示例：corners_over_9.5（全场角球大于9.5）'],
+    [],
+    ['提示：建议先在系统内点击「生成默认市场赔率」，再下载模板，选项代码会自动填好，只需填赔率列。'],
+  ]
+  const wsHelp = XLSX.utils.aoa_to_sheet(helpData)
+  wsHelp['!cols'] = [{ wch: 20 }, { wch: 28 }, { wch: 44 }]
+  wsHelp['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, { s: { r: 20, c: 0 }, e: { r: 20, c: 2 } }]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '市场赔率')
+  XLSX.utils.book_append_sheet(wb, wsHelp, '选项代码说明')
+  const filename = match.value ? `${match.value.home_team}VS${match.value.away_team}_市场赔率模板.xlsx` : '市场赔率模板.xlsx'
+  XLSX.writeFile(wb, filename)
+}
+
+// 解析导入的比分赔率Excel文件
+function handleExcelImport(file) {
+  const f = file.raw
+  if (!f) return
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result)
+      const wb = XLSX.read(data, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+      if (rows.length < 2) {
+        ElMessage.warning('Excel 内容为空，请检查文件')
+        return
+      }
+      // 自动定位数据起始行（首列和次列都是整数的行）
+      let startIdx = -1
+      for (let i = 0; i < rows.length; i++) {
+        const h = parseInt(rows[i][0])
+        const a = parseInt(rows[i][1])
+        const o = parseFloat(rows[i][2])
+        if (!isNaN(h) && !isNaN(a) && !isNaN(o)) { startIdx = i; break }
+      }
+      if (startIdx === -1) { ElMessage.warning('未找到有效数据行，请检查文件格式'); return }
+      let updated = 0, added = 0, skipped = 0
+      for (let i = startIdx; i < rows.length; i++) {
+        const row = rows[i]
+        const homeScore = parseInt(row[0])
+        const awayScore = parseInt(row[1])
+        const oddsVal = parseFloat(row[2])
+        if (isNaN(homeScore) || isNaN(awayScore) || isNaN(oddsVal)) {
+          skipped++
+          continue
+        }
+        if (oddsVal < 0) { skipped++; continue }
+        const existing = odds.value.find(
+          o => o.home_score === homeScore && o.away_score === awayScore
+        )
+        if (existing) {
+          existing.odds_value = oddsVal
+          updated++
+        } else {
+          odds.value.push({
+            id: null,
+            match_id: matchId,
+            home_score: homeScore,
+            away_score: awayScore,
+            odds_value: oddsVal,
+            _new: true
+          })
+          added++
+        }
+      }
+      currentPage.value = 1
+      let msg = `导入完成：更新 ${updated} 条，新增 ${added} 条`
+      if (skipped > 0) msg += `，跳过无效行 ${skipped} 条`
+      ElMessage.success(msg)
+    } catch (err) {
+      ElMessage.error('Excel 解析失败，请检查文件格式')
+    }
+    // 清空 upload 组件，允许重复选同一文件
+    if (excelUploadRef.value) excelUploadRef.value.clearFiles()
+  }
+  reader.readAsArrayBuffer(f)
+}
+
+// 解析导入的市场赔率Excel文件
+function handleMarketExcelImport(file) {
+  const f = file.raw
+  if (!f) return
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result)
+      const wb = XLSX.read(data, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+      if (rows.length < 2) {
+        ElMessage.warning('Excel 内容为空，请检查文件')
+        return
+      }
+      // 自动定位数据起始行：跳过比赛信息行和表头行（第3列为"选项代码"），找到第3列有值且非表头的行
+      let startIdx = -1
+      for (let i = 0; i < rows.length; i++) {
+        const col2 = String(rows[i][2] || '').trim()
+        if (!col2 || col2 === '选项代码') continue
+        if (rows[i][0]) { startIdx = i; break }
+      }
+      if (startIdx === -1) { ElMessage.warning('未找到有效市场赔率数据，请检查文件格式'); return }
+      let updated = 0, added = 0, skipped = 0
+      for (let i = startIdx; i < rows.length; i++) {
+        const row = rows[i]
+        const selectionCode = String(row[2] || '').trim()
+        const oddsVal = parseFloat(row[3])
+        if (!selectionCode || isNaN(oddsVal)) { skipped++; continue }
+        if (oddsVal < 0) { skipped++; continue }
+        const existing = marketOdds.value.find(o => o.selection_code === selectionCode)
+        if (existing) {
+          existing.odds_value = oddsVal
+          updated++
+        } else {
+          // 代码不存在时，用 Excel 的盘口类型+选项名称新建条目
+          const marketType = String(row[0] || '').trim()
+          const selection = String(row[1] || '').trim()
+          if (marketType && selection) {
+            marketOdds.value.push({
+              id: null,
+              market_type: marketType,
+              selection: selection,
+              selection_code: selectionCode,
+              odds_value: oddsVal,
+              _new: true
+            })
+            added++
+          } else {
+            skipped++
+          }
+        }
+      }
+      let msg = `市场赔率导入完成：更新 ${updated} 条，新增 ${added} 条`
+      if (skipped > 0) msg += `，跳过 ${skipped} 行（数据不完整或格式错误）`
+      ElMessage.success(msg)
+    } catch (err) {
+      ElMessage.error('Excel 解析失败，请检查文件格式')
+    }
+    if (marketExcelUploadRef.value) marketExcelUploadRef.value.clearFiles()
+  }
+  reader.readAsArrayBuffer(f)
 }
 
 onMounted(loadData)
