@@ -210,6 +210,16 @@ router.delete('/odds/item/:id', async (req, res) => {
   }
 });
 
+// 清空全部比分赔率
+router.delete('/odds/:matchId/all', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM odds WHERE match_id = $1', [req.params.matchId]);
+    res.json({ message: '清空成功' });
+  } catch (err) {
+    res.status(500).json({ error: '清空赔率失败' });
+  }
+});
+
 // ═══════════════ 比分录入 & 结算 ═══════════════
 
 // 结算市场投注项（全场或上半场，type='ft'|'ht'；extraData: { totalCorners }）
@@ -567,13 +577,13 @@ router.post('/market-odds/:matchId/generate', async (req, res) => {
     ['上半场独赢盘口', '上半场平局',              'ht_draw',     0.00],
     ['上半场独赢盘口', `上半场${away_team}独赢`, 'ht_away_win',  0.00],
     // 全场让球盘口（让球值由参数决定）
-    ['全场让球盘口', `${home_team}收让${ftHc1}球`, `handicap_home_${ftHc1}`,  0.00],
-    ['全场让球盘口', `${away_team}让${ftHc1}球`,   `handicap_away_${-ftHc1}`, 0.00],
-    ['全场让球盘口', `${home_team}受让${ftHc2}球`, `handicap_home_${ftHc2}`,  0.00],
-    ['全场让球盘口', `${away_team}让${ftHc2}球`,   `handicap_away_${-ftHc2}`, 0.00],
+    ['全场让球盘口', `${home_team}让${ftHc1}球`, `handicap_home_${ftHc1}`,  0.00],
+    ['全场让球盘口', `${away_team}让${ftHc1}球`, `handicap_away_${ftHc1}`,  0.00],
+    ['全场让球盘口', `${home_team}让${ftHc2}球`, `handicap_home_${ftHc2}`,  0.00],
+    ['全场让球盘口', `${away_team}让${ftHc2}球`, `handicap_away_${ftHc2}`,  0.00],
     // 上半场让球盘口
-    ['上半场让球盘口', `上半场${home_team}收让${htHc1}球`, `ht_handicap_home_${htHc1}`,  0.00],
-    ['上半场让球盘口', `上半场${away_team}让${htHc1}球`,   `ht_handicap_away_${-htHc1}`, 0.00],
+    ['上半场让球盘口', `上半场${home_team}让${htHc1}球`, `ht_handicap_home_${htHc1}`, 0.00],
+    ['上半场让球盘口', `上半场${away_team}让${htHc1}球`, `ht_handicap_away_${htHc1}`, 0.00],
     // 全场比分大小盘口（大小球线由参数决定）
     ['全场比分大小盘口', `全场比分大于${ftT1}`, `total_over_${ftT1}`,  0.00],
     ['全场比分大小盘口', `全场比分小于${ftT1}`, `total_under_${ftT1}`, 0.00],
@@ -627,22 +637,37 @@ router.put('/market-odds/:matchId', async (req, res) => {
   if (odds.some(o => Number(o.odds_value) < 0)) {
     return res.status(400).json({ error: '赔率不能小于0' });
   }
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     for (const odd of odds) {
       if (odd.id) {
-        await pool.query(
+        await client.query(
           'UPDATE market_odds SET odds_value = $1, selection = $2, selection_code = $3 WHERE id = $4 AND match_id = $5',
           [odd.odds_value, odd.selection, odd.selection_code, odd.id, req.params.matchId]
         );
+      } else if (odd.market_type && odd.selection && odd.selection_code) {
+        // Excel 导入的新条目
+        await client.query(
+          `INSERT INTO market_odds (match_id, market_type, selection, selection_code, odds_value)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (match_id, market_type, selection) DO UPDATE
+             SET selection_code = EXCLUDED.selection_code, odds_value = EXCLUDED.odds_value`,
+          [req.params.matchId, odd.market_type, odd.selection, odd.selection_code, odd.odds_value]
+        );
       }
     }
+    await client.query('COMMIT');
     const result = await pool.query(
       'SELECT * FROM market_odds WHERE match_id = $1 ORDER BY market_type ASC, id ASC',
       [req.params.matchId]
     );
     res.json(result.rows);
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: '更新市场赔率失败' });
+  } finally {
+    client.release();
   }
 });
 
@@ -674,6 +699,16 @@ router.delete('/market-odds/item/:id', async (req, res) => {
     res.json({ message: '删除成功' });
   } catch (err) {
     res.status(500).json({ error: '删除失败' });
+  }
+});
+
+// 清空全部市场赔率
+router.delete('/market-odds/:matchId/all', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM market_odds WHERE match_id = $1', [req.params.matchId]);
+    res.json({ message: '清空成功' });
+  } catch (err) {
+    res.status(500).json({ error: '清空市场赔率失败' });
   }
 });
 

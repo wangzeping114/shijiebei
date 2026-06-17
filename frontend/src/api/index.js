@@ -52,6 +52,7 @@ export const adminAPI = {
   updateOdds: (matchId, odds) => api.put(`/admin/odds/${matchId}`, { odds }),
   addOdd: (matchId, data) => api.post(`/admin/odds/${matchId}`, data),
   deleteOdd: id => api.delete(`/admin/odds/item/${id}`),
+  clearOdds: matchId => api.delete(`/admin/odds/${matchId}/all`),
 
   // 比分录入
   enterResult: (matchId, data) => api.put(`/admin/matches/${matchId}/result`, data),
@@ -63,6 +64,7 @@ export const adminAPI = {
   updateMarketOdds: (matchId, odds) => api.put(`/admin/market-odds/${matchId}`, { odds }),
   addMarketOddItem: (matchId, data) => api.post(`/admin/market-odds/${matchId}/items`, data),
   deleteMarketOdd: id => api.delete(`/admin/market-odds/item/${id}`),
+  clearMarketOdds: matchId => api.delete(`/admin/market-odds/${matchId}/all`),
 
   // 报表
   getReportList: () => api.get('/admin/reports'),
