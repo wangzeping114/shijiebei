@@ -209,10 +209,19 @@ function isTodayMatch(row) {
 const sortedMatches = computed(() => {
   const list = [...matches.value]
   list.sort((a, b) => {
+    const now = nowMs.value
     const aToday = isTodayMatch(a)
     const bToday = isTodayMatch(b)
     if (aToday !== bToday) return aToday ? -1 : 1
-    return parseBeijingMs(a.match_time) - parseBeijingMs(b.match_time)
+
+    const aMs = parseBeijingMs(a.match_time)
+    const bMs = parseBeijingMs(b.match_time)
+    const aFuture = aMs >= now
+    const bFuture = bMs >= now
+    if (aFuture !== bFuture) return aFuture ? -1 : 1
+
+    // 未来赛事按时间升序，历史赛事按时间降序
+    return aFuture ? (aMs - bMs) : (bMs - aMs)
   })
   return list
 })
