@@ -46,7 +46,8 @@
           </div>
 
           <!-- 投注明细 -->
-          <div class="items-table">
+          <!-- 桌面端表格 -->
+          <div class="items-table hidden-mobile">
             <div class="items-header">
               <span>比分（主:客）</span>
               <span>赔率</span>
@@ -88,6 +89,47 @@
                   @click="handleDeleteItem(order, item)"
                 >删错</el-button>
               </span>
+            </div>
+          </div>
+
+          <!-- 移动端卡片式 -->
+          <div class="items-cards show-mobile">
+            <div
+              v-for="item in order.items"
+              :key="item.id"
+              class="item-card"
+              :class="{ winner: item.is_winner }"
+            >
+              <div class="item-card-main">
+                <span class="score">
+                  <template v-if="item.bet_type === 'market' || item.market_label">
+                    <el-tag size="small" type="warning" style="margin-right:4px">盘口</el-tag>{{ item.market_label }}
+                  </template>
+                  <template v-else>{{ item.home_score }} : {{ item.away_score }}</template>
+                </span>
+                <span class="item-odds">× {{ Number(item.odds_value).toFixed(2) }}</span>
+              </div>
+              <div class="item-card-sub">
+                <span>投注 ¥{{ Number(item.amount).toFixed(2) }}</span>
+                <el-tag v-if="item.is_winner" type="success" size="small">中奖 +¥{{ (Number(item.amount) * Number(item.odds_value)).toFixed(2) }}</el-tag>
+                <el-tag v-else-if="order.match_status === 'finished'" type="info" size="small">未中奖</el-tag>
+                <el-tag v-else type="warning" size="small">待开奖</el-tag>
+              </div>
+              <div class="item-card-actions">
+                <el-button
+                  v-if="item.bet_type !== 'market' && !item.market_label"
+                  size="small"
+                  :disabled="!canOperateOrder(order)"
+                  @click="openEditDialog(order, item)"
+                >编辑比分</el-button>
+                <el-button
+                  size="small"
+                  type="danger"
+                  plain
+                  :disabled="!canOperateOrder(order)"
+                  @click="handleDeleteItem(order, item)"
+                >删错</el-button>
+              </div>
             </div>
           </div>
 
@@ -373,6 +415,36 @@ onUnmounted(() => {
 .score { font-weight: 700; font-size: 16px; color: #1a4a1a; }
 .item-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+/* 移动端显示控制 */
+.hidden-mobile { display: block; }
+.show-mobile { display: none; }
+
+/* 移动端卡片式 */
+.items-cards { display: flex; flex-direction: column; gap: 8px; }
+.item-card {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.item-card.winner { background: #f0faf0; border-color: #b7e4b7; }
+.item-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.item-odds { font-size: 14px; font-weight: 600; color: #e6a020; }
+.item-card-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 8px;
+}
+.item-card-actions { display: flex; gap: 8px; }
+
 .order-footer {
   display: flex;
   gap: 24px;
@@ -431,14 +503,30 @@ onUnmounted(() => {
   .match-info {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 6px;
+    font-size: 14px;
   }
-  .items-header, .item-row {
-    min-width: 680px;
-  }
+  /* 切换卡片模式 */
+  .hidden-mobile { display: none !important; }
+  .show-mobile { display: flex !important; flex-direction: column; }
   .order-footer {
     flex-direction: column;
     gap: 8px;
+  }
+  :deep(.el-dialog) {
+    width: calc(100vw - 16px) !important;
+    margin: 8px auto 0 !important;
+    border-radius: 14px;
+  }
+  :deep(.el-dialog__footer) {
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+    display: flex;
+    gap: 10px;
+  }
+  :deep(.el-dialog__footer .el-button) {
+    flex: 1;
+    margin-left: 0 !important;
+    height: 42px;
   }
 }
 

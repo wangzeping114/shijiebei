@@ -39,106 +39,186 @@
 
       <!-- 投注区域 -->
       <div class="bet-section">
-        <div class="section-header">
-          <h3>🎯 选择比分 & 填写投注金额</h3>
-          <span class="hint">每个比分可独立填写金额，金额为0则不参与投注；赔率为0表示未开盘</span>
-          <span v-if="userStore.isAdmin" class="hint admin-hint">管理员可点击比分进入赔率编辑页</span>
-        </div>
-
-        <div v-if="isBetLocked" class="bet-locked-tip">
-          {{ lockReason }}，当前页面已锁定，无法进行投注相关操作
-        </div>
-
-        <div class="odds-table">
-          <div class="odds-header">
-            <span class="col-score">比分（主:客）</span>
-            <span class="col-odds">赔率</span>
-            <span class="col-amount">投注金额（元）</span>
-            <span class="col-payout">预计赔付</span>
+        <!-- 比分投注折叠区 -->
+        <div class="collapse-header" @click="scoreCollapsed = !scoreCollapsed">
+          <h3>🎯 比分投注</h3>
+          <div class="collapse-header-right">
+            <span class="hint" v-if="!scoreCollapsed">每个比分可独立填写金额；赔率0为未开盘</span>
+            <span v-if="userStore.isAdmin" class="hint admin-hint">管理员可点击比分编辑赔率</span>
+            <span class="collapse-arrow">{{ scoreCollapsed ? '▶' : '▼' }}</span>
           </div>
-          <div
-            v-for="odd in match.odds"
-            :key="odd.id"
-            class="odds-row"
-            :class="{ selected: betAmounts[odd.id] > 0, disabled: Number(odd.odds_value) <= 0 }"
-          >
-            <span
-              class="col-score score-label"
-              :class="{ 'score-editable': userStore.isAdmin }"
-              @click="goToOddsConfig"
+        </div>
+
+        <div v-show="!scoreCollapsed">
+          <div v-if="isBetLocked" class="bet-locked-tip">
+            {{ lockReason }}，当前页面已锁定，无法进行投注相关操作
+          </div>
+
+          <!-- 桌面端表格 -->
+          <div class="odds-table hidden-mobile">
+            <div class="odds-header">
+              <span class="col-score">比分（主:客）</span>
+              <span class="col-odds">赔率</span>
+              <span class="col-amount">投注金额（元）</span>
+              <span class="col-payout">预计赔付</span>
+            </div>
+            <div
+              v-for="odd in match.odds"
+              :key="odd.id"
+              class="odds-row"
+              :class="{ selected: betAmounts[odd.id] > 0, disabled: Number(odd.odds_value) <= 0 }"
             >
-              {{ odd.home_score }} : {{ odd.away_score }}
-            </span>
-            <span class="col-odds odds-value">× {{ odd.odds_value }}</span>
-            <span class="col-amount">
-              <el-input-number
-                v-model="betAmounts[odd.id]"
-                :min="0"
-                :step="10"
-                :precision="0"
-                size="small"
-                controls-position="right"
-                placeholder="0"
-                :disabled="isBetLocked || Number(odd.odds_value) <= 0"
-              />
-            </span>
-            <span class="col-payout">
-              <template v-if="betAmounts[odd.id] > 0">
-                ¥{{ (betAmounts[odd.id] * odd.odds_value).toFixed(2) }}
-              </template>
-              <span v-else class="empty-payout">—</span>
-            </span>
-          </div>
-        </div>
-
-        <div v-if="match.odds.length === 0" class="no-odds">
-          暂无赔率配置，请联系管理员
-        </div>
-
-        <!-- 市场盘口 -->
-        <template v-if="match.market_odds && match.market_odds.length > 0">
-          <div class="section-header" style="margin-top:24px">
-            <h3>🎲 市场盘口投注</h3>
-            <span class="hint">独赢/让球/大小盘口；赔率为0表示未开盘</span>
-          </div>
-          <template v-for="(group, mType) in marketOddsGrouped" :key="mType">
-            <div class="market-type-header">{{ mType }}</div>
-            <div class="odds-table">
-              <div class="odds-header">
-                <span class="col-score">选项</span>
-                <span class="col-odds">赔率</span>
-                <span class="col-amount">投注金额（元）</span>
-                <span class="col-payout">预计赔付</span>
-              </div>
-              <div
-                v-for="mo in group"
-                :key="`mo-${mo.id}`"
-                class="odds-row"
-                :class="{ selected: marketAmounts[mo.id] > 0, disabled: Number(mo.odds_value) <= 0 }"
+              <span
+                class="col-score score-label"
+                :class="{ 'score-editable': userStore.isAdmin }"
+                @click="goToOddsConfig"
               >
-                <span class="col-score score-label">{{ mo.selection }}</span>
-                <span class="col-odds odds-value">× {{ mo.odds_value }}</span>
-                <span class="col-amount">
-                  <el-input-number
-                    v-model="marketAmounts[mo.id]"
-                    :min="0"
-                    :step="10"
-                    :precision="0"
-                    size="small"
-                    controls-position="right"
-                    placeholder="0"
-                    :disabled="isBetLocked || Number(mo.odds_value) <= 0"
-                  />
-                </span>
-                <span class="col-payout">
-                  <template v-if="marketAmounts[mo.id] > 0">
-                    ¥{{ (marketAmounts[mo.id] * mo.odds_value).toFixed(2) }}
-                  </template>
-                  <span v-else class="empty-payout">—</span>
+                {{ odd.home_score }} : {{ odd.away_score }}
+              </span>
+              <span class="col-odds odds-value">× {{ odd.odds_value }}</span>
+              <span class="col-amount">
+                <el-input-number
+                  v-model="betAmounts[odd.id]"
+                  :min="0"
+                  :step="10"
+                  :precision="0"
+                  size="small"
+                  controls-position="right"
+                  placeholder="0"
+                  :disabled="isBetLocked || Number(odd.odds_value) <= 0"
+                />
+              </span>
+              <span class="col-payout">
+                <template v-if="betAmounts[odd.id] > 0">
+                  ¥{{ (betAmounts[odd.id] * odd.odds_value).toFixed(2) }}
+                </template>
+                <span v-else class="empty-payout">—</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- 移动端卡片式 -->
+          <div class="odds-cards show-mobile">
+            <div
+              v-for="odd in match.odds"
+              :key="odd.id"
+              class="odds-card"
+              :class="{ selected: betAmounts[odd.id] > 0, disabled: Number(odd.odds_value) <= 0 }"
+            >
+              <div class="odds-card-top">
+                <span
+                  class="score-label"
+                  :class="{ 'score-editable': userStore.isAdmin }"
+                  @click="goToOddsConfig"
+                >{{ odd.home_score }} : {{ odd.away_score }}</span>
+                <span class="odds-value">× {{ odd.odds_value }}</span>
+              </div>
+              <div class="odds-card-bottom">
+                <el-input-number
+                  v-model="betAmounts[odd.id]"
+                  :min="0"
+                  :step="10"
+                  :precision="0"
+                  size="small"
+                  controls-position="right"
+                  placeholder="投注金额"
+                  :disabled="isBetLocked || Number(odd.odds_value) <= 0"
+                  style="width:140px"
+                />
+                <span class="card-payout" v-if="betAmounts[odd.id] > 0">
+                  预赔 ¥{{ (betAmounts[odd.id] * odd.odds_value).toFixed(2) }}
                 </span>
               </div>
             </div>
-          </template>
+          </div>
+
+          <div v-if="match.odds.length === 0" class="no-odds">
+            暂无赔率配置，请联系管理员
+          </div>
+        </div>
+
+        <!-- 市场盘口折叠区 -->
+        <template v-if="match.market_odds && match.market_odds.length > 0">
+          <div class="collapse-header" style="margin-top:16px" @click="marketCollapsed = !marketCollapsed">
+            <h3>🎲 市场盘口</h3>
+            <div class="collapse-header-right">
+              <span class="hint" v-if="!marketCollapsed">独赢/让球/大小盘口；赔率0为未开盘</span>
+              <span class="collapse-arrow">{{ marketCollapsed ? '▶' : '▼' }}</span>
+            </div>
+          </div>
+          <div v-show="!marketCollapsed">
+            <template v-for="(group, mType) in marketOddsGrouped" :key="mType">
+              <div class="market-type-header">{{ mType }}</div>
+
+              <!-- 桌面端表格 -->
+              <div class="odds-table hidden-mobile">
+                <div class="odds-header">
+                  <span class="col-score">选项</span>
+                  <span class="col-odds">赔率</span>
+                  <span class="col-amount">投注金额（元）</span>
+                  <span class="col-payout">预计赔付</span>
+                </div>
+                <div
+                  v-for="mo in group"
+                  :key="`mo-${mo.id}`"
+                  class="odds-row"
+                  :class="{ selected: marketAmounts[mo.id] > 0, disabled: Number(mo.odds_value) <= 0 }"
+                >
+                  <span class="col-score score-label">{{ mo.selection }}</span>
+                  <span class="col-odds odds-value">× {{ mo.odds_value }}</span>
+                  <span class="col-amount">
+                    <el-input-number
+                      v-model="marketAmounts[mo.id]"
+                      :min="0"
+                      :step="10"
+                      :precision="0"
+                      size="small"
+                      controls-position="right"
+                      placeholder="0"
+                      :disabled="isBetLocked || Number(mo.odds_value) <= 0"
+                    />
+                  </span>
+                  <span class="col-payout">
+                    <template v-if="marketAmounts[mo.id] > 0">
+                      ¥{{ (marketAmounts[mo.id] * mo.odds_value).toFixed(2) }}
+                    </template>
+                    <span v-else class="empty-payout">—</span>
+                  </span>
+                </div>
+              </div>
+
+              <!-- 移动端卡片式 -->
+              <div class="odds-cards show-mobile">
+                <div
+                  v-for="mo in group"
+                  :key="`moc-${mo.id}`"
+                  class="odds-card"
+                  :class="{ selected: marketAmounts[mo.id] > 0, disabled: Number(mo.odds_value) <= 0 }"
+                >
+                  <div class="odds-card-top">
+                    <span class="score-label" style="font-size:14px">{{ mo.selection }}</span>
+                    <span class="odds-value">× {{ mo.odds_value }}</span>
+                  </div>
+                  <div class="odds-card-bottom">
+                    <el-input-number
+                      v-model="marketAmounts[mo.id]"
+                      :min="0"
+                      :step="10"
+                      :precision="0"
+                      size="small"
+                      controls-position="right"
+                      placeholder="投注金额"
+                      :disabled="isBetLocked || Number(mo.odds_value) <= 0"
+                      style="width:140px"
+                    />
+                    <span class="card-payout" v-if="marketAmounts[mo.id] > 0">
+                      预赔 ¥{{ (marketAmounts[mo.id] * mo.odds_value).toFixed(2) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
         </template>
 
         <div v-if="selectedItems.length > 0" class="selected-panel">
@@ -262,6 +342,8 @@ const marketAmounts = reactive({})
 const editDialogVisible = ref(false)
 const editingOddId = ref(null)
 const editForm = reactive({ targetOddId: null, amount: 10 })
+const scoreCollapsed = ref(false)
+const marketCollapsed = ref(false)
 
 const selectedItems = computed(() =>
   match.value?.odds.filter(o => betAmounts[o.id] > 0) || []
@@ -473,13 +555,26 @@ onMounted(async () => {
   padding: 24px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.08);
 }
-.section-header {
+.collapse-header {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px;
+  cursor: pointer;
+  border-bottom: 2px solid #f0f5f0;
+  margin-bottom: 16px;
+  user-select: none;
 }
-.section-header h3 { font-size: 18px; color: #1a4a1a; }
+.collapse-header h3 { font-size: 18px; color: #1a4a1a; margin: 0; }
+.collapse-header:hover { background: #f8faf8; border-radius: 8px; }
+.collapse-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.collapse-arrow { color: #2d7d2d; font-size: 13px; margin-left: 4px; }
 .hint { font-size: 12px; color: #999; }
 .admin-hint { color: #1a6b1a; font-weight: 600; }
 
@@ -516,6 +611,39 @@ onMounted(async () => {
 .empty-payout { color: #ccc; }
 
 .no-odds { text-align: center; color: #aaa; padding: 40px; }
+
+/* 移动端显示/隐藏控制 */
+.hidden-mobile { display: block; }
+.show-mobile { display: none; }
+
+/* 移动端卡片式布局 */
+.odds-cards { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.odds-card {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 10px 14px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.odds-card.selected { background: #f0faf0; border-color: #b7e4b7; }
+.odds-card.disabled { background: #f5f5f5; opacity: 0.65; }
+.odds-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.odds-card-bottom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.card-payout {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2d7d2d;
+}
 
 .bet-locked-tip {
   margin-bottom: 14px;
@@ -621,13 +749,14 @@ onMounted(async () => {
     padding: 0 10px;
   }
   .match-banner {
-    padding: 16px 12px;
+    padding: 14px 10px;
     border-radius: 12px;
-    gap: 8px;
+    gap: 6px;
   }
   .team-name {
-    font-size: 26px;
-    line-height: 1.05;
+    font-size: 18px;
+    line-height: 1.2;
+    word-break: break-word;
   }
   .team-label,
   .match-time,
@@ -639,39 +768,23 @@ onMounted(async () => {
     font-size: 20px;
   }
   .bet-section {
-    padding: 14px 10px;
+    padding: 12px 10px;
     border-radius: 12px;
   }
-  .section-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
+  .collapse-header {
+    padding: 8px 2px;
     margin-bottom: 12px;
   }
-  .section-header h3 {
-    font-size: 16px;
+  .collapse-header h3 {
+    font-size: 15px;
   }
-  .hint {
-    font-size: 12px;
+  .collapse-header-right {
+    gap: 4px;
   }
-  .odds-table {
-    overflow: hidden;
-  }
-  .odds-header, .odds-row {
-    min-width: 0;
-    padding: 10px;
-    grid-template-columns: 86px 74px minmax(130px, 1fr);
-  }
-  .col-payout {
-    display: none;
-  }
-  .score-label {
-    font-size: 16px;
-    line-height: 1;
-  }
-  .odds-value {
-    font-size: 14px;
-  }
+  /* 切换到卡片模式 */
+  .hidden-mobile { display: none !important; }
+  .show-mobile { display: flex !important; flex-direction: column; }
+
   .selected-item {
     grid-template-columns: 1fr;
     gap: 6px;
