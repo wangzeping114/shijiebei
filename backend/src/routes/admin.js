@@ -210,6 +210,16 @@ router.delete('/odds/item/:id', async (req, res) => {
   }
 });
 
+// 清空全部比分赔率
+router.delete('/odds/:matchId/all', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM odds WHERE match_id = $1', [req.params.matchId]);
+    res.json({ message: '清空成功' });
+  } catch (err) {
+    res.status(500).json({ error: '清空赔率失败' });
+  }
+});
+
 // ═══════════════ 比分录入 & 结算 ═══════════════
 
 // 结算市场投注项（全场或上半场，type='ft'|'ht'；extraData: { totalCorners }）
@@ -689,6 +699,16 @@ router.delete('/market-odds/item/:id', async (req, res) => {
     res.json({ message: '删除成功' });
   } catch (err) {
     res.status(500).json({ error: '删除失败' });
+  }
+});
+
+// 清空全部市场赔率
+router.delete('/market-odds/:matchId/all', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM market_odds WHERE match_id = $1', [req.params.matchId]);
+    res.json({ message: '清空成功' });
+  } catch (err) {
+    res.status(500).json({ error: '清空市场赔率失败' });
   }
 });
 

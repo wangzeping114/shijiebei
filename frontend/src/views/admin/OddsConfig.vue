@@ -26,6 +26,9 @@
         <el-button type="primary" :loading="generating" @click="handleGenerate">
           ⚡ 一键生成默认赔率(0)
         </el-button>
+        <el-button type="danger" :loading="clearing" @click="handleClearOdds">
+          🗑️ 清空全部比分赔率
+        </el-button>
         <el-button type="success" @click="openAddDialog">+ 手动新增</el-button>
         <el-button type="info" @click="handleDownloadTemplate">📥 下载Excel模板</el-button>
         <el-upload
@@ -111,6 +114,9 @@
       <div class="toolbar">
         <el-button type="primary" @click="openGenerateDialog">
           ⚡ 生成默认市场赔率
+        </el-button>
+        <el-button type="danger" :loading="mClearing" @click="handleClearMarketOdds">
+          🗑️ 清空全部市场赔率
         </el-button>
         <el-button type="info" @click="handleDownloadMarketTemplate">📥 下载市场赔率模板</el-button>
         <el-upload
@@ -302,8 +308,10 @@ const marketOdds = ref([])
 const loading = ref(false)
 const generating = ref(false)
 const saving = ref(false)
+const clearing = ref(false)
 const mGenerating = ref(false)
 const mSaving = ref(false)
+const mClearing = ref(false)
 const generateDialogVisible = ref(false)
 const genForm = ref({ ft_hc1: 1.75, ft_hc2: 2, ht_hc1: 0.75, ft_total1: 3, ft_total2: 2.5, ht_total1: 1 })
 const scoreCollapsed = ref(false)
@@ -408,6 +416,21 @@ async function handleGenerate() {
   }
 }
 
+async function handleClearOdds() {
+  await ElMessageBox.confirm('将清空该赛事所有比分赔率，此操作不可恢复，确认继续？', '警告', { type: 'warning' })
+  clearing.value = true
+  try {
+    await adminAPI.clearOdds(matchId)
+    odds.value = []
+    currentPage.value = 1
+    ElMessage.success('比分赔率已全部清空')
+  } catch (err) {
+    ElMessage.error(err.error || '清空失败')
+  } finally {
+    clearing.value = false
+  }
+}
+
 async function handleBatchSave() {
   if (odds.value.length === 0) return
   saving.value = true
@@ -456,6 +479,20 @@ async function handleDeleteOdd(id) {
 
 function openGenerateDialog() {
   generateDialogVisible.value = true
+}
+
+async function handleClearMarketOdds() {
+  await ElMessageBox.confirm('将清空该赛事所有市场赔率，此操作不可恢复，确认继续？', '警告', { type: 'warning' })
+  mClearing.value = true
+  try {
+    await adminAPI.clearMarketOdds(matchId)
+    marketOdds.value = []
+    ElMessage.success('市场赔率已全部清空')
+  } catch (err) {
+    ElMessage.error(err.error || '清空失败')
+  } finally {
+    mClearing.value = false
+  }
 }
 
 async function confirmMarketGenerate() {
