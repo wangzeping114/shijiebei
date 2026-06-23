@@ -76,6 +76,36 @@
         </div>
       </div>
     </main>
+
+    <el-dialog
+      v-model="winningDialogVisible"
+      title="中奖提醒"
+      width="520px"
+      class="winning-dialog"
+    >
+      <div class="winning-summary">
+        恭喜您近期有 {{ recentWinningOrders.length }} 笔中奖订单，中奖赔付合计
+        <strong>¥{{ recentWinningTotal.toFixed(2) }}</strong>
+      </div>
+      <div class="winning-list">
+        <div v-for="order in recentWinningOrders" :key="order.id" class="winning-item">
+          <div class="winning-match">
+            {{ order.home_team }} vs {{ order.away_team }}
+          </div>
+          <div class="winning-meta">
+            <span>订单号：{{ order.order_no }}</span>
+            <span>赔付：¥{{ Number(order.winning_amount || 0).toFixed(2) }}</span>
+          </div>
+          <div v-if="order.match_status === 'finished'" class="winning-score">
+            最终比分：{{ order.result_home }} : {{ order.result_away }}
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="winningDialogVisible = false">稍后查看</el-button>
+        <el-button type="success" @click="goMyBetsFromNotice">查看我的投注</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -83,14 +113,18 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { matchAPI } from '../api'
+import { betAPI, matchAPI } from '../api'
 import { useUserStore } from '../stores/user'
 
 const router = useRouter()
 const userStore = useUserStore()
 const matches = ref([])
 const loading = ref(false)
+const recentWinningOrders = ref([])
+const winningDialogVisible = ref(false)
 let refreshTimer = null
+
+const RECENT_WIN_DAYS = 7
 
 function beijingDateKey(dateLike) {
   const s = String(dateLike)
@@ -132,6 +166,10 @@ const groupedMatches = computed(() => [
   }
 ])
 
+const recentWinningTotal = computed(() =>
+  recentWinningOrders.value.reduce((sum, order) => sum + Number(order.winning_amount || 0), 0)
+)
+
 function statusLabel(status) {
   const map = { upcoming: '即将开赛', ongoing: '进行中', finished: '已结束', closed: '已关闭' }
   return map[status] || status
@@ -165,6 +203,45 @@ function goAdmin() {
   router.push('/admin')
 }
 
+function goMyBetsFromNotice() {
+  winningDialogVisible.value = false
+  router.push('/my-bets')
+}
+
+function parseMatchTimeMs(value) {
+  if (!value) return 0
+  const s = String(value).replace(' ', 'T').replace(/\.\d+.*$/, '')
+  return new Date(`${s}+08:00`).getTime()
+}
+
+function winningNoticeKey() {
+  const tokenTail = String(userStore.token || '').slice(-12)
+  return `winningNoticeShown:${userStore.user?.id || 'guest'}:${tokenTail}`
+}
+
+function isRecentWinningOrder(order) {
+  if (order.status !== 'won' || Number(order.winning_amount || 0) <= 0) return false
+  const matchMs = parseMatchTimeMs(order.match_time)
+  if (!matchMs) return false
+  return Date.now() - matchMs <= RECENT_WIN_DAYS * 24 * 60 * 60 * 1000
+}
+
+async function checkRecentWinningNotice() {
+  const noticeKey = winningNoticeKey()
+  if (sessionStorage.getItem(noticeKey)) return
+
+  try {
+    const orders = await betAPI.getMyBets()
+    recentWinningOrders.value = orders.filter(isRecentWinningOrder)
+    if (recentWinningOrders.value.length > 0) {
+      winningDialogVisible.value = true
+      sessionStorage.setItem(noticeKey, '1')
+    }
+  } catch {
+    // 中奖提醒不影响首页主流程，接口异常时保持静默。
+  }
+}
+
 async function loadMatches(silent = false) {
   if (!silent) loading.value = true
   try {
@@ -178,6 +255,7 @@ async function loadMatches(silent = false) {
 
 onMounted(async () => {
   await loadMatches()
+  checkRecentWinningNotice()
   refreshTimer = setInterval(() => {
     loadMatches(true)
   }, 60000)
@@ -314,6 +392,48 @@ onUnmounted(() => {
 .match-time { font-size: 12px; color: #888; }
 .venue-inline { color: #aaa; font-size: 11px; }
 .loading-wrap { padding: 40px; background: #fff; border-radius: 12px; }
+
+.winning-summary {
+  color: #333;
+  line-height: 1.7;
+  margin-bottom: 14px;
+}
+.winning-summary strong {
+  color: #c00;
+  font-size: 18px;
+}
+.winning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.winning-item {
+  border: 1px solid #d9ecc8;
+  background: #f7fff3;
+  border-radius: 8px;
+  padding: 12px;
+}
+.winning-match {
+  font-weight: 700;
+  color: #1a4a1a;
+  margin-bottom: 6px;
+}
+.winning-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #666;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.winning-score {
+  margin-top: 6px;
+  color: #c00;
+  font-size: 13px;
+  font-weight: 700;
+}
 
 @media (max-width: 768px) {
   .header {
